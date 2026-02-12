@@ -1152,11 +1152,12 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 f"source=({src_centroid.x():.3f}, {src_centroid.y():.3f}), "
                 f"is_arbitrary={self._is_arbitrary}"
             )
-            # Geometry translation
-            if self._is_arbitrary:
-                self._georeference_preview(target_centroid, source_centroid=src_centroid)
-            else:
-                self._translate_preview(target_centroid, src_centroid)
+            # Geometry translation (skip if tile lock is on to preserve manual adjustments)
+            if not self.chkTileLock.isChecked():
+                if self._is_arbitrary:
+                    self._georeference_preview(target_centroid, source_centroid=src_centroid)
+                else:
+                    self._translate_preview(target_centroid, src_centroid)
 
             # Center main window on best match (keep current scale)
             best_center = best_lot_feat.geometry().centroid().asPoint()
@@ -1330,7 +1331,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             return
 
         # Step 2: Translate preview geometries to align with main (BEFORE creating highlights)
-        if best_feat_id is not None:
+        # Skip if tile lock is on to preserve manual adjustments
+        if best_feat_id is not None and not self.chkTileLock.isChecked():
             best_f = self.preview_layer.getFeature(best_feat_id)
             src_centroid = best_f.geometry().centroid().asPoint()
             logger.info(
@@ -1593,6 +1595,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         """Handle Ctrl+drag to move preview features."""
         if not self.preview_layer:
             return
+
+        # Clear stale highlights (they don't move with features)
+        self._clear_highlights()
 
         self.preview_layer.startEditing()
         for feat in self.preview_layer.getFeatures():
