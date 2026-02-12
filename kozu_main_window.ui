@@ -1,0 +1,741 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>KozuMainWindow</class>
+ <widget class="QMainWindow" name="KozuMainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1200</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>900</width>
+    <height>600</height>
+   </size>
+  </property>
+  <property name="windowTitle">
+   <string>公図XML整合ツール</string>
+  </property>
+  <widget class="QWidget" name="centralWidget">
+   <layout class="QHBoxLayout" name="mainLayout">
+    <property name="spacing">
+     <number>0</number>
+    </property>
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
+    <!-- Left Panel: Operations -->
+    <item>
+     <widget class="QWidget" name="leftPanel">
+      <property name="minimumSize">
+       <size>
+        <width>360</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>400</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <layout class="QVBoxLayout" name="leftPanelLayout">
+       <property name="spacing">
+        <number>6</number>
+       </property>
+       <property name="leftMargin">
+        <number>6</number>
+       </property>
+       <property name="topMargin">
+        <number>6</number>
+       </property>
+       <property name="rightMargin">
+        <number>6</number>
+       </property>
+       <property name="bottomMargin">
+        <number>6</number>
+       </property>
+       <!-- Database Selection (Global) -->
+       <item>
+        <widget class="QGroupBox" name="groupGlobalDb">
+         <property name="title">
+          <string>データベース</string>
+         </property>
+         <layout class="QVBoxLayout" name="globalDbLayout">
+          <item>
+           <widget class="QLineEdit" name="lineEditGlobalDb">
+            <property name="placeholderText">
+             <string>データベースを選択または新規作成...</string>
+            </property>
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="globalDbButtonsLayout">
+            <item>
+             <widget class="QPushButton" name="btnOpenDb">
+              <property name="text">
+               <string>既存を開く</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnNewDb">
+              <property name="text">
+               <string>新規作成</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblDbInfo">
+            <property name="text">
+             <string>ファイル数: - / 筆数: -</string>
+            </property>
+            <property name="styleSheet">
+             <string>color: #666666; font-size: 11px;</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <!-- Tab Widget for Operations -->
+       <item>
+        <widget class="QTabWidget" name="tabWidget">
+         <property name="currentIndex">
+          <number>0</number>
+         </property>
+         <!-- Import Tab -->
+         <widget class="QWidget" name="tabImport">
+          <attribute name="title">
+           <string>インポート</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="importLayout">
+           <!-- XML Folder Selection -->
+           <item>
+            <widget class="QGroupBox" name="groupXmlFolder">
+             <property name="title">
+              <string>XMLフォルダ</string>
+             </property>
+             <layout class="QVBoxLayout" name="xmlFolderLayout">
+              <item>
+               <layout class="QHBoxLayout" name="xmlFolderSelectLayout">
+                <item>
+                 <widget class="QLineEdit" name="lineEditXmlFolder">
+                  <property name="placeholderText">
+                   <string>XMLファイルのフォルダを選択...</string>
+                  </property>
+                  <property name="readOnly">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnSelectXmlFolder">
+                  <property name="text">
+                   <string>参照...</string>
+                  </property>
+                  <property name="maximumSize">
+                   <size>
+                    <width>80</width>
+                    <height>16777215</height>
+                   </size>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="chkIncludeSubdirs">
+                <property name="text">
+                 <string>サブフォルダも含める</string>
+                </property>
+                <property name="checked">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="chkExcludeChizugai">
+                <property name="text">
+                 <string>「地図外」のみのXMLを除外</string>
+                </property>
+                <property name="checked">
+                 <bool>true</bool>
+                </property>
+                <property name="toolTip">
+                 <string>地番が「地図外」のみで構成されるXMLファイルをインポートしません</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <!-- Progress -->
+           <item>
+            <widget class="QGroupBox" name="groupProgress">
+             <property name="title">
+              <string>進捗</string>
+             </property>
+             <layout class="QVBoxLayout" name="progressLayout">
+              <item>
+               <widget class="QProgressBar" name="progressBar">
+                <property name="value">
+                 <number>0</number>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="lblProgressStatus">
+                <property name="text">
+                 <string>待機中...</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <!-- Import Button -->
+           <item>
+            <widget class="QPushButton" name="btnStartImport">
+             <property name="text">
+              <string>インポート開始</string>
+             </property>
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>40</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="importSpacer">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>40</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+          </layout>
+         </widget>
+         <!-- Preview Tab -->
+         <widget class="QWidget" name="tabPreview">
+          <attribute name="title">
+           <string>プレビュー</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="previewTabLayout">
+           <!-- Oaza Selection -->
+           <item>
+            <widget class="QGroupBox" name="groupOazaSelect">
+             <property name="title">
+              <string>大字選択</string>
+             </property>
+             <layout class="QVBoxLayout" name="oazaSelectLayout">
+              <item>
+               <widget class="QComboBox" name="comboOaza">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <item>
+                 <property name="text">
+                  <string>（大字を選択）</string>
+                 </property>
+                </item>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <!-- XML File List -->
+           <item>
+            <widget class="QGroupBox" name="groupXmlList">
+             <property name="title">
+              <string>XMLファイル</string>
+             </property>
+             <layout class="QVBoxLayout" name="xmlListLayout">
+              <item>
+               <widget class="QTreeWidget" name="treeXmlFiles">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="rootIsDecorated">
+                 <bool>false</bool>
+                </property>
+                <property name="selectionMode">
+                 <enum>QAbstractItemView::SingleSelection</enum>
+                </property>
+                <property name="alternatingRowColors">
+                 <bool>true</bool>
+                </property>
+                <column>
+                 <property name="text">
+                  <string>地図名</string>
+                 </property>
+                </column>
+                <column>
+                 <property name="text">
+                  <string>縮尺</string>
+                 </property>
+                </column>
+                <column>
+                 <property name="text">
+                  <string>筆数</string>
+                 </property>
+                </column>
+                <column>
+                 <property name="text">
+                  <string>座標系</string>
+                 </property>
+                </column>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <!-- Display Options -->
+           <item>
+            <widget class="QGroupBox" name="groupDisplayOptions">
+             <property name="title">
+              <string>表示オプション</string>
+             </property>
+             <layout class="QVBoxLayout" name="displayOptionsLayout">
+              <item>
+               <widget class="QCheckBox" name="chkShowChiban">
+                <property name="text">
+                 <string>地番を表示</string>
+                </property>
+                <property name="checked">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="chkShowEstArea">
+                <property name="text">
+                 <string>推定面積を表示</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <!-- Main Window Link -->
+           <item>
+            <widget class="QGroupBox" name="groupLinkLayer">
+             <property name="title">
+              <string>メインウィンドウ連携</string>
+             </property>
+             <layout class="QVBoxLayout" name="linkLayerLayout">
+              <item>
+               <widget class="QPushButton" name="btnLinkSettings">
+                <property name="text">
+                 <string>連携設定...</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="chkEnableMainSelect">
+                <property name="text">
+                 <string>地図上で選択</string>
+                </property>
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="lblLinkStatus">
+                <property name="text">
+                 <string>未設定</string>
+                </property>
+                <property name="styleSheet">
+                 <string>color: #666666; font-size: 11px;</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="matchLevelColumns">
+                <!-- Left column: match level display -->
+                <item>
+                 <layout class="QVBoxLayout" name="matchLevelLeft">
+                  <item>
+                   <widget class="QLabel" name="lblMatchLevelHeader">
+                    <property name="text">
+                     <string>一致レベル表示:</string>
+                    </property>
+                    <property name="styleSheet">
+                     <string>color: #666666; font-size: 11px; margin-top: 4px;</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QCheckBox" name="chkMatchExact">
+                    <property name="text">
+                     <string>完全一致（青）</string>
+                    </property>
+                    <property name="checked">
+                     <bool>true</bool>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QCheckBox" name="chkMatchParent">
+                    <property name="text">
+                     <string>親番一致（黄）</string>
+                    </property>
+                    <property name="checked">
+                     <bool>true</bool>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QCheckBox" name="chkMatchNear">
+                    <property name="text">
+                     <string>近似一致（赤）</string>
+                    </property>
+                    <property name="checked">
+                     <bool>true</bool>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+                <!-- Right column: mutual display options -->
+                <item>
+                 <layout class="QVBoxLayout" name="matchLevelRight">
+                  <item>
+                   <widget class="QLabel" name="lblMutualHeader">
+                    <property name="text">
+                     <string>相互表示:</string>
+                    </property>
+                    <property name="styleSheet">
+                     <string>color: #666666; font-size: 11px; margin-top: 4px;</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QCheckBox" name="chkMutualEnabled">
+                    <property name="text">
+                     <string>有効</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QCheckBox" name="chkMutualNear">
+                    <property name="text">
+                     <string>近似一致（赤）</string>
+                    </property>
+                    <property name="enabled">
+                     <bool>false</bool>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <spacer name="previewSpacer">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>40</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <!-- Right Panel: Preview View -->
+    <item>
+     <widget class="QWidget" name="rightPanel">
+      <layout class="QVBoxLayout" name="rightPanelLayout">
+       <property name="spacing">
+        <number>6</number>
+       </property>
+       <property name="leftMargin">
+        <number>6</number>
+       </property>
+       <property name="topMargin">
+        <number>6</number>
+       </property>
+       <property name="rightMargin">
+        <number>6</number>
+       </property>
+       <property name="bottomMargin">
+        <number>6</number>
+       </property>
+       <!-- Preview Title -->
+       <item>
+        <widget class="QLabel" name="lblPreviewTitle">
+         <property name="text">
+          <string>公図プレビュー</string>
+         </property>
+         <property name="styleSheet">
+          <string>font-size: 14px; font-weight: bold; padding: 4px;</string>
+         </property>
+        </widget>
+       </item>
+       <!-- Map Canvas Container -->
+       <item>
+        <widget class="QFrame" name="frameMapCanvas">
+         <property name="frameShape">
+          <enum>QFrame::StyledPanel</enum>
+         </property>
+         <property name="frameShadow">
+          <enum>QFrame::Sunken</enum>
+         </property>
+         <layout class="QVBoxLayout" name="mapCanvasLayout">
+          <property name="spacing">
+           <number>0</number>
+          </property>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+         </layout>
+        </widget>
+       </item>
+       <!-- Tile Layer Control -->
+       <item>
+        <widget class="QGroupBox" name="groupTileLayer">
+         <property name="title">
+          <string>背景タイル（公共座標系のみ）</string>
+         </property>
+         <layout class="QVBoxLayout" name="tileLayerLayout">
+          <item>
+           <layout class="QHBoxLayout" name="tileSelectLayout">
+            <item>
+             <widget class="QCheckBox" name="chkShowTile">
+              <property name="text">
+               <string>表示</string>
+              </property>
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboTileSource">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <item>
+               <property name="text">
+                <string>国土地理院 標準地図</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>国土地理院 写真</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>国土地理院 淡色地図</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>OpenStreetMap</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="chkTileLock">
+              <property name="text">
+               <string>位置ロック</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblTileStatus">
+            <property name="text">
+             <string>座標系を持つデータを選択すると利用可能</string>
+            </property>
+            <property name="styleSheet">
+             <string>color: #666666; font-size: 11px;</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <!-- Overlay Tile -->
+       <item>
+        <widget class="QGroupBox" name="groupOverlayTile">
+         <property name="title">
+          <string>オーバーレイタイル</string>
+         </property>
+         <layout class="QHBoxLayout" name="overlayTileLayout">
+          <item>
+           <widget class="QCheckBox" name="chkOverlayTile">
+            <property name="text">
+             <string>表示</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="comboOverlaySource">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>1</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="placeholderText">
+             <string>（ソースを選択）</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spinOverlayOpacity">
+            <property name="minimum">
+             <number>0</number>
+            </property>
+            <property name="maximum">
+             <number>100</number>
+            </property>
+            <property name="value">
+             <number>50</number>
+            </property>
+            <property name="suffix">
+             <string>%</string>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>70</width>
+              <height>16777215</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <!-- Preview Info -->
+       <item>
+        <widget class="QGroupBox" name="groupPreviewInfo">
+         <property name="title">
+          <string>情報</string>
+         </property>
+         <layout class="QHBoxLayout" name="previewInfoOuterLayout">
+          <item>
+           <layout class="QVBoxLayout" name="previewInfoLayout">
+            <item>
+             <widget class="QLabel" name="lblPreviewInfo">
+              <property name="text">
+               <string>筆数: - / 座標系: -</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblPreviewCrs">
+              <property name="text">
+               <string>CRS: 未設定</string>
+              </property>
+              <property name="styleSheet">
+               <string>color: #666666; font-size: 11px;</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnExportPdf">
+            <property name="text">
+             <string>PDF出力</string>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>80</width>
+              <height>16777215</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnExportGpkg">
+            <property name="text">
+             <string>エクスポート</string>
+            </property>
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>100</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="toolTip">
+             <string>スケール済みデータをGeoPackageとしてエクスポート</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QStatusBar" name="statusBar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

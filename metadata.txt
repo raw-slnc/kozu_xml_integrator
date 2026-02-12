@@ -1,0 +1,32 @@
+# This file contains metadata for your plugin.
+
+# This file should be included when you package your plugin.# Mandatory items:
+
+[general]
+name=Kozu XML Integrator/公図XML整合ツール
+qgisMinimumVersion=3.0
+description=法務局地図XML（公図）を森林計画図の地番情報と照合し、位置調整を行った上でGISレイヤとして出力するQGISプラグインです。 / Integrates and exports Japanese cadastral XML (Kozu) data as a GIS layer.
+version=0.1
+author=Hideharu Maasai
+email=hideharumasai@void.mints.ne.jp
+
+about=法務局地図XML（公図）を森林計画図と地番情報で照合し、若干の位置調整を行った上でGISレイヤとして出力するQGISプラグインです。境界の自動確定は行わず、現地立会いのための作業用図面作成を目的とします。
+
+tracker=https://github.com/raw-slnc/kozu_xml_integrator/issues
+repository=https://github.com/raw-slnc/kozu_xml_integrator
+# End of mandatory metadata
+
+# Recommended items:
+
+hasProcessingProvider=no
+# changelog=
+
+tags=python,cadastral,xml,forest,vector,japan
+
+homepage=https://github.com/raw-slnc/kozu_xml_integrator
+category=Vector
+icon=icon.png
+experimental=True
+deprecated=False
+server=False
+
