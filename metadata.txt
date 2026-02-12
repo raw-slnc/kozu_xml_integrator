@@ -5,7 +5,7 @@
 [general]
 name=Kozu XML Integrator
 qgisMinimumVersion=3.0
-description=法務局地図XML（公図）を森林計画図の地番情報と照合し、位置調整を行った上でGISレイヤとして出力するQGISプラグインです。 / Integrates and exports Japanese cadastral XML (Kozu) data as a GIS layer.
+description=Integrates and exports Japanese cadastral XML (Kozu) data as a GIS layer.
 version=0.1
 author=Hideharu Maasai
 email=hideharumasai@void.mints.ne.jp
