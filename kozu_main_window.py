@@ -887,13 +887,14 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
     def _apply_link_config(self, config: dict):
         """Apply link configuration and update UI."""
+        mode = config.get('match_mode', 'spatial')
         # Resolve layer IDs from names if needed
         if 'lot_layer_id' not in config:
             for layer_id, layer in QgsProject.instance().mapLayers().items():
                 if isinstance(layer, QgsVectorLayer):
                     if layer.name() == config.get('lot_layer_name'):
                         config['lot_layer_id'] = layer_id
-                    if layer.name() == config.get('oaza_layer_name'):
+                    if mode == 'spatial' and layer.name() == config.get('oaza_layer_name'):
                         config['oaza_layer_id'] = layer_id
 
         self._link_config = config
@@ -902,13 +903,22 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self.chkEnableMainSelect.setEnabled(True)
 
     def _get_link_layers(self):
-        """Resolve link config to actual layers. Returns (oaza_layer, lot_layer) or (None, None)."""
+        """Resolve link config to actual layers.
+
+        Returns (oaza_layer, lot_layer).
+        In attribute mode, oaza_layer is always None.
+        """
         if not self._link_config:
             return None, None
-        oaza_id = self._link_config.get('oaza_layer_id')
+        mode = self._link_config.get('match_mode', 'spatial')
         lot_id = self._link_config.get('lot_layer_id')
-        oaza_layer = QgsProject.instance().mapLayer(oaza_id) if oaza_id else None
         lot_layer = QgsProject.instance().mapLayer(lot_id) if lot_id else None
+
+        if mode == 'attribute':
+            return None, lot_layer
+
+        oaza_id = self._link_config.get('oaza_layer_id')
+        oaza_layer = QgsProject.instance().mapLayer(oaza_id) if oaza_id else None
         return oaza_layer, lot_layer
 
     # ─── CRS Helpers ───────────────────────────────────────
@@ -957,6 +967,36 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             f'\'{safe}\' LIKE "{column}" || \'%\' OR '
             f'"{column}" LIKE \'{safe}%\''
         )
+
+    def _build_lot_filter(self, oaza_name: str):
+        """Build a QgsFeatureRequest for lot layer filtered by oaza.
+
+        Returns (request, oaza_geom):
+          - attribute mode: request with oaza filter expression, oaza_geom=None
+          - spatial mode: request with bounding box filter, oaza_geom or None
+        """
+        mode = self._link_config.get('match_mode', 'spatial')
+        oaza_col = self._link_config.get('oaza_column', '')
+
+        if mode == 'attribute':
+            if oaza_col and oaza_name:
+                expr = self._oaza_filter_expr(oaza_col, oaza_name)
+                return QgsFeatureRequest().setFilterExpression(expr), None
+            return QgsFeatureRequest(), None
+
+        # spatial mode: get oaza geometry from oaza_layer
+        oaza_layer, _ = self._get_link_layers()
+        oaza_geom = None
+        if oaza_layer and oaza_col and oaza_name:
+            geoms = [f.geometry() for f in oaza_layer.getFeatures(
+                QgsFeatureRequest().setFilterExpression(
+                    self._oaza_filter_expr(oaza_col, oaza_name)))]
+            if geoms:
+                oaza_geom = QgsGeometry.unaryUnion(geoms)
+
+        if oaza_geom:
+            return QgsFeatureRequest().setFilterRect(oaza_geom.boundingBox()), oaza_geom
+        return QgsFeatureRequest(), None
 
     # Regex to strip suffixes: X(n/m), X（n/m）, Wn, Vn, -内
     _CHIBAN_SUFFIX_RE = re.compile(
@@ -1079,25 +1119,20 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             logger.info("[BehaviorA] aborted: no parent chiban")
             return
 
-        oaza_layer, lot_layer = self._get_link_layers()
+        _, lot_layer = self._get_link_layers()
         if not lot_layer:
             logger.info("[BehaviorA] aborted: lot_layer not found")
             return
 
         parent_col = self._link_config.get('parent_column', '')
         branch_col = self._link_config.get('branch_column', '')
-        oaza_col = self._link_config.get('oaza_column', '')
 
-        # Find oaza boundary for filtering
-        oaza_geom = None
-        if oaza_layer and oaza_col and src_oaza:
-            request = QgsFeatureRequest().setFilterExpression(
-                self._oaza_filter_expr(oaza_col, src_oaza)
-            )
-            for oaza_feat in oaza_layer.getFeatures(request):
-                oaza_geom = oaza_feat.geometry()
-                break
-        logger.info(f"[BehaviorA] oaza_geom found: {oaza_geom is not None}")
+        # Build filtered request for lot layer (attribute or spatial)
+        request, oaza_geom = self._build_lot_filter(src_oaza)
+        logger.info(
+            f"[BehaviorA] mode={self._link_config.get('match_mode', 'spatial')}, "
+            f"oaza_geom found: {oaza_geom is not None}"
+        )
 
         # Search lot layer for matches
         enabled_levels = self._enabled_match_levels()
@@ -1107,13 +1142,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         match_priority = {'exact': 0, 'parent': 1, 'near': 2}
         combined_extent = QgsRectangle()
 
-        if oaza_geom:
-            request = QgsFeatureRequest().setFilterRect(oaza_geom.boundingBox())
-        else:
-            request = QgsFeatureRequest()
-
         for lot_feat in lot_layer.getFeatures(request):
-            # If we have oaza geometry, filter to features within it
+            # Spatial post-filter (only in spatial mode when oaza_geom exists)
             if oaza_geom and not lot_feat.geometry().intersects(oaza_geom):
                 continue
 
@@ -1250,21 +1280,6 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         if not oaza_names:
             return
 
-        oaza_name = next(iter(oaza_names))  # Typically 1 oaza per XML
-        oaza_col = self._link_config.get('oaza_column', '')
-        parent_col = self._link_config.get('parent_column', '')
-        oaza_layer, lot_layer = self._get_link_layers()
-
-        # Get oaza geometry for spatial filtering
-        oaza_geom = None
-        if oaza_layer and oaza_col and oaza_name:
-            request = QgsFeatureRequest().setFilterExpression(
-                self._oaza_filter_expr(oaza_col, oaza_name)
-            )
-            for oaza_feat in oaza_layer.getFeatures(request):
-                oaza_geom = oaza_feat.geometry()
-                break
-
         # Build chiban range info
         if parent_set:
             sorted_parents = sorted(int(p) for p in parent_set)
@@ -1386,24 +1401,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             else:
                 reverse_levels = {'exact'}
 
-            oaza_layer, lot_layer2 = self._get_link_layers()
+            _, lot_layer2 = self._get_link_layers()
             if lot_layer2:
-                oaza_col = self._link_config.get('oaza_column', '')
-                # Get oaza geometry for spatial filtering
-                oaza_geom = None
                 pivot_oaza = best_feat['oaza_name'] or ''
-                if oaza_layer and oaza_col and pivot_oaza:
-                    req = QgsFeatureRequest().setFilterExpression(
-                        self._oaza_filter_expr(oaza_col, pivot_oaza)
-                    )
-                    for of in oaza_layer.getFeatures(req):
-                        oaza_geom = of.geometry()
-                        break
-
-                if oaza_geom:
-                    req = QgsFeatureRequest().setFilterRect(oaza_geom.boundingBox())
-                else:
-                    req = QgsFeatureRequest()
+                req, oaza_geom = self._build_lot_filter(pivot_oaza)
 
                 main_combined = QgsRectangle()
                 best_main_bbox = None
