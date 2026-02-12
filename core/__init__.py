@@ -9,7 +9,6 @@ This package contains the core functionality:
 - spatial_join: Spatial join with administrative boundaries
 - search_index: Dynamic search index generation
 - importer: Import orchestration
-- integration_engine: Complete integration workflow orchestrator (v2)
 """
 
 from .xml_parser import (
@@ -53,14 +52,6 @@ from .importer import (
     create_database_and_import,
 )
 
-from .integration_engine import (
-    IntegrationEngine,
-    IntegrationConfig,
-    IntegrationProgress,
-    IntegrationResult,
-    OazaResult,
-)
-
 __all__ = [
     # xml_parser
     'KozuXmlParser',
@@ -91,10 +82,4 @@ __all__ = [
     'ImportProgress',
     'ImportResult',
     'create_database_and_import',
-    # integration_engine (v2)
-    'IntegrationEngine',
-    'IntegrationConfig',
-    'IntegrationProgress',
-    'IntegrationResult',
-    'OazaResult',
 ]
