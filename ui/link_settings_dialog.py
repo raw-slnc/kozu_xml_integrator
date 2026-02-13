@@ -47,11 +47,13 @@ class LinkSettingsDialog(QDialog):
         lot_group = QGroupBox("地番レイヤー")
         lot_form = QFormLayout()
         self.comboLotLayer = QComboBox()
+        self.comboMunicipalityColumn = QComboBox()
         self.comboLotOazaColumn = QComboBox()
         self.lblLotOazaColumn = QLabel("大字名カラム:")
         self.comboParentColumn = QComboBox()
         self.comboBranchColumn = QComboBox()
         lot_form.addRow("レイヤー:", self.comboLotLayer)
+        lot_form.addRow("市町村名カラム:", self.comboMunicipalityColumn)
         lot_form.addRow(self.lblLotOazaColumn, self.comboLotOazaColumn)
         lot_form.addRow("親番カラム:", self.comboParentColumn)
         lot_form.addRow("枝番カラム:", self.comboBranchColumn)
@@ -121,13 +123,16 @@ class LinkSettingsDialog(QDialog):
 
     def _update_lot_columns(self, index: int):
         """Update lot column combos when layer changes."""
+        self.comboMunicipalityColumn.clear()
         self.comboParentColumn.clear()
         self.comboBranchColumn.clear()
         self.comboLotOazaColumn.clear()
         layer = self._get_layer(self.comboLotLayer)
         if not layer:
             return
+        self.comboMunicipalityColumn.addItem("（なし）", "")
         for field in layer.fields():
+            self.comboMunicipalityColumn.addItem(field.name(), field.name())
             self.comboParentColumn.addItem(field.name())
             self.comboBranchColumn.addItem(field.name())
             self.comboLotOazaColumn.addItem(field.name())
@@ -159,6 +164,11 @@ class LinkSettingsDialog(QDialog):
             if idx >= 0:
                 self.comboLotLayer.setCurrentIndex(idx)
                 # Restore columns
+                mcol = cfg.get('municipality_column', '')
+                if mcol:
+                    midx = self.comboMunicipalityColumn.findData(mcol)
+                    if midx >= 0:
+                        self.comboMunicipalityColumn.setCurrentIndex(midx)
                 pcol = cfg.get('parent_column', '')
                 if pcol:
                     pidx = self.comboParentColumn.findText(pcol)
@@ -202,10 +212,12 @@ class LinkSettingsDialog(QDialog):
         if not parent_col or not branch_col:
             return None
 
+        municipality_col = self.comboMunicipalityColumn.currentData()
         config = {
             'match_mode': mode,
             'lot_layer_id': lot_layer.id(),
             'lot_layer_name': lot_layer.name(),
+            'municipality_column': municipality_col or '',
             'parent_column': parent_col,
             'branch_column': branch_col,
         }
@@ -232,6 +244,8 @@ class LinkSettingsDialog(QDialog):
     def save_to_settings(config: dict):
         """Persist link config to QSettings."""
         settings = QSettings()
+        # Clear old keys first to avoid stale values from previous mode
+        settings.remove('KozuXmlIntegrator/LinkConfig')
         settings.beginGroup('KozuXmlIntegrator/LinkConfig')
         for key, val in config.items():
             settings.setValue(key, val)
@@ -244,7 +258,8 @@ class LinkSettingsDialog(QDialog):
         settings.beginGroup('KozuXmlIntegrator/LinkConfig')
         config = {}
         for key in ['match_mode', 'oaza_layer_name', 'oaza_column',
-                     'lot_layer_name', 'parent_column', 'branch_column']:
+                     'lot_layer_name', 'municipality_column',
+                     'parent_column', 'branch_column']:
             val = settings.value(key, '')
             if val:
                 config[key] = val

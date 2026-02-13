@@ -16,7 +16,7 @@ from qgis.PyQt import uic
 from qgis.PyQt.QtCore import Qt, QSettings, pyqtSignal, QVariant, QPointF, QRectF, QMarginsF
 from qgis.PyQt.QtWidgets import (
     QMainWindow, QFileDialog, QMessageBox, QTreeWidgetItem, QShortcut,
-    QApplication, QDialog, QFormLayout, QLineEdit, QDialogButtonBox
+    QApplication, QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QWidget
 )
 from qgis.PyQt.QtGui import QColor, QKeySequence, QPainter, QPen, QFont, QPageSize, QPageLayout
 from qgis.core import (
@@ -197,6 +197,27 @@ class MainSelectTool(QgsMapTool):
         self.canvas().refresh()
 
 
+class CrosshairOverlay(QWidget):
+    """Transparent overlay that draws a crosshair at the center of the canvas."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(QColor(0, 0, 0, 160))
+        pen.setWidthF(0.5)
+        painter.setPen(pen)
+        w, h = self.width(), self.height()
+        cx, cy = w // 2, h // 2
+        painter.drawLine(cx, 0, cx, h)
+        painter.drawLine(0, cy, w, cy)
+        painter.end()
+
+
 class KozuMainWindow(QMainWindow, FORM_CLASS):
     """Main window for Kozu XML Integrator."""
 
@@ -220,6 +241,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         # Current preview state
         self._current_xml_meta_id: Optional[int] = None
+        self._current_municipality: str = ''  # Municipality name from XML meta
         self._current_scale: int = 600  # Default scale denominator
         self._max_zoom_out_scale: float = 0  # Zoom-out limit (scale denominator)
         self._full_extent = None  # Full data extent for zoom-out limit
@@ -258,6 +280,11 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         layout = self.frameMapCanvas.layout()
         layout.addWidget(self.map_canvas)
 
+        # Crosshair overlay
+        self._crosshair = CrosshairOverlay(self.map_canvas)
+        self._crosshair.resize(self.map_canvas.size())
+        self.map_canvas.resizeEvent = self._on_canvas_resize
+
         # Preview tool: pan + click + Ctrl+drag
         self._preview_tool = PreviewClickTool(self.map_canvas)
         self._preview_tool.clicked.connect(self._on_preview_clicked)
@@ -270,6 +297,11 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         # Default CRS (JGD2011 / Japan Plane Rectangular CS VIII)
         crs = QgsCoordinateReferenceSystem('EPSG:6676')
         self.map_canvas.setDestinationCrs(crs)
+
+    def _on_canvas_resize(self, event):
+        """Keep crosshair overlay sized to canvas."""
+        QgsMapCanvas.resizeEvent(self.map_canvas, event)
+        self._crosshair.resize(event.size())
 
     def _toggle_fullscreen(self):
         """Toggle between fullscreen and normal window mode."""
@@ -294,6 +326,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self.chkShowChiban.stateChanged.connect(self._update_labels)
         self.chkShowEstArea.stateChanged.connect(self._update_labels)
         self.btnLinkSettings.clicked.connect(self._on_link_settings)
+        self.btnLinkClear.clicked.connect(self._on_link_clear)
         self.chkEnableMainSelect.stateChanged.connect(self._on_enable_main_select)
 
         # Mutual display options
@@ -646,6 +679,13 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         try:
             with self.db.connection() as conn:
+                # Get municipality name from xml_meta
+                muni_row = conn.execute(
+                    "SELECT municipality_name FROM t_xml_meta WHERE id = ?",
+                    (xml_meta_id,)
+                ).fetchone()
+                self._current_municipality = muni_row[0] if muni_row and muni_row[0] else ''
+
                 cursor = conn.execute("""
                     SELECT id, oaza_name, chiban, AsText(geom) as wkt,
                            coord_type, area_sqm
@@ -724,7 +764,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             # Update info labels
             fude_count = len(features)
             crs_info = ', '.join(crs_types) if crs_types else '不明'
-            self.lblPreviewInfo.setText(f"筆数: {fude_count} / 座標系: {crs_info}")
+            muni_info = f" / {self._current_municipality}" if self._current_municipality else ""
+            self.lblPreviewInfo.setText(f"筆数: {fude_count} / 座標系: {crs_info}{muni_info}")
             self.lblPreviewTitle.setText(f"公図プレビュー: {map_name}")
 
             # Tile availability
@@ -899,8 +940,21 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         self._link_config = config
         lot_name = config.get('lot_layer_name', '?')
-        self.lblLinkStatus.setText(f"連携: {lot_name}")
+        mode_label = "属性" if mode == 'attribute' else "空間"
+        self.lblLinkStatus.setText(f"連携: {lot_name} ({mode_label})")
         self.chkEnableMainSelect.setEnabled(True)
+        self.btnLinkClear.setEnabled(True)
+
+    def _on_link_clear(self):
+        """Clear link configuration completely."""
+        self._clear_highlights()
+        self.chkEnableMainSelect.setChecked(False)
+        self.chkEnableMainSelect.setEnabled(False)
+        self.btnLinkClear.setEnabled(False)
+        self._link_config = None
+        self.lblLinkStatus.setText("未設定")
+        # Clear persisted settings
+        QSettings().remove('KozuXmlIntegrator/LinkConfig')
 
     def _get_link_layers(self):
         """Resolve link config to actual layers.
@@ -1126,13 +1180,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         parent_col = self._link_config.get('parent_column', '')
         branch_col = self._link_config.get('branch_column', '')
+        municipality_col = self._link_config.get('municipality_column', '')
 
         # Build filtered request for lot layer (attribute or spatial)
         request, oaza_geom = self._build_lot_filter(src_oaza)
-        logger.info(
-            f"[BehaviorA] mode={self._link_config.get('match_mode', 'spatial')}, "
-            f"oaza_geom found: {oaza_geom is not None}"
-        )
 
         # Search lot layer for matches
         enabled_levels = self._enabled_match_levels()
@@ -1146,6 +1197,11 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             # Spatial post-filter (only in spatial mode when oaza_geom exists)
             if oaza_geom and not lot_feat.geometry().intersects(oaza_geom):
                 continue
+            # Municipality post-filter: skip if lot municipality not in XML municipality
+            if municipality_col and self._current_municipality:
+                lot_muni = str(lot_feat[municipality_col]) if lot_feat[municipality_col] else ''
+                if lot_muni and lot_muni not in self._current_municipality:
+                    continue
 
             tgt_parent = str(lot_feat[parent_col]) if lot_feat[parent_col] else ''
             tgt_branch = str(lot_feat[branch_col]) if lot_feat[branch_col] else ''
@@ -1169,7 +1225,6 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             f"highlights={len(self._main_highlights)}, "
             f"is_arbitrary={self._is_arbitrary}"
         )
-
         if best_lot_feat:
             raw_target = best_lot_feat.geometry().centroid().asPoint()
             target_centroid = self._transform_point_to_preview_crs(
@@ -1308,6 +1363,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         parent_col = self._link_config.get('parent_column', '')
         branch_col = self._link_config.get('branch_column', '')
+        municipality_col = self._link_config.get('municipality_column', '')
         tgt_parent = str(feat[parent_col]) if feat[parent_col] else ''
         tgt_branch = str(feat[branch_col]) if feat[branch_col] else ''
         if not tgt_parent:
@@ -1411,6 +1467,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 for lf in lot_layer2.getFeatures(req):
                     if oaza_geom and not lf.geometry().intersects(oaza_geom):
                         continue
+                    if municipality_col and self._current_municipality:
+                        lf_muni = str(lf[municipality_col]) if lf[municipality_col] else ''
+                        if lf_muni and lf_muni not in self._current_municipality:
+                            continue
                     lf_parent = str(lf[parent_col]) if lf[parent_col] else ''
                     lf_branch = str(lf[branch_col]) if lf[branch_col] else ''
                     rlevel = self._match_level(pivot_parent, pivot_branch, lf_parent, lf_branch)

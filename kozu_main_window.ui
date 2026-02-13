@@ -359,14 +359,34 @@
                </widget>
               </item>
               <item>
-               <widget class="QCheckBox" name="chkEnableMainSelect">
-                <property name="text">
-                 <string>地図上で選択</string>
-                </property>
-                <property name="enabled">
-                 <bool>false</bool>
-                </property>
-               </widget>
+               <layout class="QHBoxLayout" name="mainSelectRow">
+                <item>
+                 <widget class="QCheckBox" name="chkEnableMainSelect">
+                  <property name="text">
+                   <string>地図上で選択</string>
+                  </property>
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnLinkClear">
+                  <property name="text">
+                   <string>連携解除</string>
+                  </property>
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                  <property name="maximumSize">
+                   <size>
+                    <width>80</width>
+                    <height>16777215</height>
+                   </size>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
               </item>
               <item>
                <widget class="QLabel" name="lblLinkStatus">
