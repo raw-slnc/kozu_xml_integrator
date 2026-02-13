@@ -826,7 +826,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         if show_chiban:
             parts.append('"chiban"')
         if show_est_area:
-            parts.append(r"format_number(\"est_area\", 0) || 'm²'")
+            parts.append("format_number(\"est_area\", 0) || 'm²'")
 
         expression = " || '\\n' || ".join(parts) if len(parts) > 1 else parts[0]
 
