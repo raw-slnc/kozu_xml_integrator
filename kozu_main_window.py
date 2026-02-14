@@ -265,9 +265,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         # Default position: top-left of screen
         self.move(0, 0)
 
-        # Ctrl+Shift+F: toggle fullscreen
+        # Ctrl+F: toggle fullscreen
         self._fullscreen_shortcut = QShortcut(
-            QKeySequence('Ctrl+Shift+F'), self
+            QKeySequence('Ctrl+F'), self
         )
         self._fullscreen_shortcut.activated.connect(self._toggle_fullscreen)
 
