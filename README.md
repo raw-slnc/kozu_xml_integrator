@@ -1,16 +1,16 @@
 # Kozu XML Integrator / 公図XML整合ツール
 
-A QGIS plugin that cross-references Japanese Legal Affairs Bureau cadastral map XML (Kozu) with forest planning maps and parcel information, applies positional adjustments, and exports the result as a GIS layer.
+A QGIS plugin that cross-references Japanese Legal Affairs Bureau cadastral map XML (Kozu) with forest planning maps and parcel information, applies minor positional adjustments, and provides support for survey investigations.
 
-This plugin does not perform automatic boundary determination. It is intended for creating working maps for on-site boundary verification.
+This plugin does not perform automatic boundary determination. It is intended for area determination for on-site boundary verification.
 
 The plugin identifies the target area by matching the Oaza (district name) in the XML file with the Oaza in the forest planning map, so a layer with Oaza district boundaries is required.
 
 ---
 
-法務局地図XML（公図）を森林計画図の地番情報と照合し、位置調整を行った上でGISレイヤとして出力するQGISプラグインです。
+法務局地図XML（公図）を森林計画図の地番情報と照合し、位置の微調整を行い照合する調査のサポートを提供します。
 
-境界の自動確定は行わず、現地立会いのための作業用図面作成を目的とします。
+境界の自動確定は行わず、現地立会いのための区域確定を目的とします。
 
 XMLファイルに含まれる大字と森林計画図の大字を照らし合わせ区域を判別するので、大字区域がわかるレイヤーが必要です。
 
