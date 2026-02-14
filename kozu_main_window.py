@@ -397,6 +397,12 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         if saved_config:
             self._apply_link_config(saved_config)
 
+        # Default tab: Preview if database loaded, Import otherwise
+        if self.db_path:
+            self.tabWidget.setCurrentWidget(self.tabPreview)
+        else:
+            self.tabWidget.setCurrentWidget(self.tabImport)
+
     def _save_settings(self):
         """Save current settings."""
         settings = QSettings()
