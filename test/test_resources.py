@@ -10,7 +10,7 @@
 
 __author__ = 'hideharumasai@void.mints.ne.jp'
 __date__ = '2026-01-15'
-__copyright__ = 'Copyright 2026, Hideharu Maasai'
+__copyright__ = 'Copyright 2026, Hideharu Masai'
 
 import unittest
 

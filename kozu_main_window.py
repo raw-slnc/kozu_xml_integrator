@@ -752,7 +752,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
             # Apply polygon style
             symbol = QgsFillSymbol.createSimple({
-                'color': '150,150,255,77',
+                'color': '150,150,255,10',
                 'outline_color': '0,0,150,255',
                 'outline_width': '0.2'
             })

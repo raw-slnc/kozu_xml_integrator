@@ -1,16 +1,18 @@
 # This file contains metadata for your plugin.
 
-# This file should be included when you package your plugin.# Mandatory items:
+# This file should be included when you package your plugin.
+
+# Mandatory items:
 
 [general]
 name=Kozu XML Integrator
 qgisMinimumVersion=3.0
 description=Integrates and exports Japanese cadastral XML (Kozu) data as a GIS layer.
-version=0.1
-author=Hideharu Maasai
+version=0.1.0
+author=Hideharu Masai
 email=hideharumasai@void.mints.ne.jp
 
-about=公図XML整合ツール/法務局地図XML（公図）を森林計画図と地番情報で照合し、若干の位置調整を行った上でGISレイヤとして出力するQGISプラグインです。境界の自動確定は行わず、現地立会いのための作業用図面作成を目的とします。
+about=A QGIS plugin that cross-references Japanese Legal Affairs Bureau cadastral map XML (Kozu) with forest planning maps and parcel information, applies minor positional adjustments, and exports the result as a GIS layer. It does not perform automatic boundary determination; it is intended for creating working maps for on-site boundary verification. / 公図XML整合ツール — 法務局地図XML（公図）を森林計画図と地番情報で照合し、若干の位置調整を行った上でGISレイヤとして出力するQGISプラグインです。境界の自動確定は行わず、現地立会いのための作業用図面作成を目的とします。
 
 tracker=https://github.com/raw-slnc/kozu_xml_integrator/issues
 repository=https://github.com/raw-slnc/kozu_xml_integrator
@@ -21,7 +23,7 @@ repository=https://github.com/raw-slnc/kozu_xml_integrator
 hasProcessingProvider=no
 # changelog=
 
-tags=python,cadastral,xml,forest,vector,japan
+tags=cadastral,xml,forest,vector,japan,land registry,kozu,boundary
 
 homepage=https://github.com/raw-slnc/kozu_xml_integrator
 category=Vector
@@ -29,5 +31,3 @@ icon=icon.png
 experimental=True
 deprecated=False
 server=False
-
-

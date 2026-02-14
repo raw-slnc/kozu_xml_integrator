@@ -8,7 +8,7 @@
                               -------------------
         begin                : 2026-01-15
         git sha              : $Format:%H$
-        copyright            : (C) 2026 by Hideharu Maasai
+        copyright            : (C) 2026 by Hideharu Masai
         email                : hideharumasai@void.mints.ne.jp
  ***************************************************************************/
 
