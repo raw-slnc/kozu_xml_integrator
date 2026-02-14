@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from qgis.PyQt import uic
-from qgis.PyQt.QtCore import Qt, QSettings, pyqtSignal, QVariant, QPointF, QRectF, QMarginsF
+from qgis.PyQt.QtCore import Qt, QSettings, pyqtSignal, QVariant, QPointF, QRectF, QMarginsF, QEvent
 from qgis.PyQt.QtWidgets import (
     QMainWindow, QFileDialog, QMessageBox, QTreeWidgetItem, QShortcut,
     QApplication, QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QWidget
@@ -30,7 +30,7 @@ from qgis.core import (
     QgsVectorLayerSimpleLabeling,
     QgsMapSettings, QgsMapRendererCustomPainterJob
 )
-from qgis.gui import QgsMapCanvas, QgsMapTool, QgsMapToolEmitPoint, QgsHighlight
+from qgis.gui import QgsMapCanvas, QgsMapTool, QgsMapToolEmitPoint, QgsHighlight, QgsVertexMarker
 
 from .core import DatabaseManager
 import sip  # type: ignore[import-untyped]
@@ -62,10 +62,12 @@ DRAG_THRESHOLD = 5  # pixels
 
 
 class PreviewClickTool(QgsMapTool):
-    """Map tool for the preview canvas: pan + click + Ctrl+drag."""
+    """Map tool for the preview canvas: pan + click + Ctrl+drag + center snap."""
 
     clicked = pyqtSignal(QgsPointXY)
     position_adjusted = pyqtSignal(float, float)  # dx, dy in map coords
+
+    SNAP_THRESHOLD = 15  # pixels
 
     def __init__(self, canvas):
         super().__init__(canvas)
@@ -73,7 +75,27 @@ class PreviewClickTool(QgsMapTool):
         self._last_pos = None
         self._dragging = False
         self._ctrl_dragging = False
+        self._snapped = False
+
+        # Snap marker: follows mouse, snaps to crosshair center
+        self._snap_marker = QgsVertexMarker(canvas)
+        self._snap_marker.setIconType(QgsVertexMarker.ICON_CROSS)
+        self._snap_marker.setColor(QColor(255, 0, 0, 200))
+        self._snap_marker.setIconSize(12)
+        self._snap_marker.setPenWidth(2)
+        self._snap_marker.hide()
+
         self.setCursor(Qt.OpenHandCursor)
+
+    def _canvas_center_px(self):
+        """Return canvas center in pixel coordinates."""
+        c = self.canvas()
+        return c.width() // 2, c.height() // 2
+
+    def _canvas_center_map(self):
+        """Return canvas center in map coordinates."""
+        cx, cy = self._canvas_center_px()
+        return self.toMapCoordinates(QPointF(cx, cy).toPoint())
 
     def canvasPressEvent(self, event):
         self._start_pos = event.pos()
@@ -86,12 +108,26 @@ class PreviewClickTool(QgsMapTool):
             self.setCursor(Qt.ClosedHandCursor)
 
     def canvasMoveEvent(self, event):
+        # Update snap marker when not pressing (hover)
         if self._start_pos is None:
+            cx, cy = self._canvas_center_px()
+            px, py = event.pos().x(), event.pos().y()
+            dist = ((px - cx) ** 2 + (py - cy) ** 2) ** 0.5
+            if dist <= self.SNAP_THRESHOLD:
+                self._snap_marker.setCenter(self._canvas_center_map())
+                self._snapped = True
+            else:
+                self._snap_marker.setCenter(self.toMapCoordinates(event.pos()))
+                self._snapped = False
+            self._snap_marker.show()
             return
+
+        # Dragging logic
         delta = event.pos() - self._start_pos
         if not self._dragging and abs(delta.x()) + abs(delta.y()) > DRAG_THRESHOLD:
             self._dragging = True
             self._ctrl_dragging = bool(event.modifiers() & Qt.ControlModifier)
+            self._snap_marker.hide()
 
         if self._dragging:
             if self._ctrl_dragging:
@@ -118,13 +154,25 @@ class PreviewClickTool(QgsMapTool):
 
     def canvasReleaseEvent(self, event):
         if not self._dragging:
-            point = self.toMapCoordinates(event.pos())
+            if self._snapped:
+                point = self._canvas_center_map()
+            else:
+                point = self.toMapCoordinates(event.pos())
             self.clicked.emit(point)
         self._start_pos = None
         self._last_pos = None
         self._dragging = False
         self._ctrl_dragging = False
+        self._snap_marker.show()
         self.setCursor(Qt.OpenHandCursor)
+
+    def activate(self):
+        super().activate()
+        self._snap_marker.show()
+
+    def deactivate(self):
+        self._snap_marker.hide()
+        super().deactivate()
 
 
 class MainSelectTool(QgsMapTool):
@@ -293,6 +341,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._preview_tool.position_adjusted.connect(self._on_position_adjusted)
         self.map_canvas.setMapTool(self._preview_tool)
 
+        # Wheel event filter for center-snap zoom
+        self.map_canvas.viewport().installEventFilter(self)
+
         # Zoom-out limit
         self.map_canvas.scaleChanged.connect(self._on_scale_changed)
 
@@ -304,6 +355,28 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         """Keep crosshair overlay sized to canvas."""
         QgsMapCanvas.resizeEvent(self.map_canvas, event)
         self._crosshair.resize(event.size())
+
+    def eventFilter(self, obj, event):
+        """Intercept wheel events on preview canvas for center-snap zoom."""
+        if (obj is self.map_canvas.viewport()
+                and event.type() == QEvent.Wheel
+                and self._preview_tool._snapped):
+            # Zoom centered on crosshair (canvas center) instead of cursor
+            delta = event.angleDelta().y()
+            if delta == 0:
+                return False
+            factor = 0.8 if delta > 0 else 1.25
+            extent = self.map_canvas.extent()
+            center = self.map_canvas.center()
+            new_w = extent.width() * factor
+            new_h = extent.height() * factor
+            self.map_canvas.setExtent(QgsRectangle(
+                center.x() - new_w / 2, center.y() - new_h / 2,
+                center.x() + new_w / 2, center.y() + new_h / 2
+            ))
+            self.map_canvas.refresh()
+            return True
+        return super().eventFilter(obj, event)
 
     def _toggle_fullscreen(self):
         """Toggle between fullscreen and normal window mode."""
