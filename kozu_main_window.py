@@ -18,7 +18,9 @@ from qgis.PyQt.QtWidgets import (
     QMainWindow, QFileDialog, QMessageBox, QTreeWidgetItem, QShortcut,
     QApplication, QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QWidget
 )
-from qgis.PyQt.QtGui import QColor, QKeySequence, QPainter, QPen, QFont, QPageSize, QPageLayout
+from qgis.PyQt.QtGui import (
+    QColor, QKeySequence, QPainter, QPen, QFont, QPageSize, QPageLayout
+)
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsRasterLayer,
     QgsCoordinateReferenceSystem, QgsCoordinateTransform,
@@ -31,7 +33,7 @@ from qgis.core import (
 from qgis.gui import QgsMapCanvas, QgsMapTool, QgsMapToolEmitPoint, QgsHighlight
 
 from .core import DatabaseManager
-import sip
+import sip  # type: ignore[import-untyped]
 import logging
 
 logger = logging.getLogger(__name__)
@@ -1261,6 +1263,16 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 best_center.x() + hw, best_center.y() + hh
             ))
             main_canvas.refresh()
+
+            # Center preview canvas on matched position (after translation)
+            pe = self.map_canvas.extent()
+            phw = pe.width() / 2
+            phh = pe.height() / 2
+            self.map_canvas.setExtent(QgsRectangle(
+                target_centroid.x() - phw, target_centroid.y() - phh,
+                target_centroid.x() + phw, target_centroid.y() + phh
+            ))
+            self.map_canvas.refresh()
 
         # --- Step 2: Reverse highlight (main match → preview) ---
         if (self.chkMutualEnabled.isChecked()
