@@ -30,7 +30,7 @@ XMLファイルに含まれる大字と森林計画図の大字を照らし合�
 
 ## Requirements / 動作要件
 
-- QGIS 3.0 or later
+- QGIS 3.40 or later (LTR) / QGIS 3.40 以降（LTR）
 
 ## Installation / インストール
 
