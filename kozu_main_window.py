@@ -1927,25 +1927,37 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         """Read XYZ tile connections from QGIS global settings.
 
         Returns list of (display_name, metadata_dict) tuples.
+        Supports both QGIS 3.40+ and older settings paths.
         """
         results = []
         settings = QSettings()
-        settings.beginGroup('qgis/connections-xyz')
-        for name in sorted(settings.childGroups()):
-            settings.beginGroup(name)
-            url = settings.value('url', '')
-            zmin = settings.value('zmin', 0, type=int)
-            zmax = settings.value('zmax', 18, type=int)
+        # QGIS 3.40+: connections/xyz/items/<name>/
+        # QGIS <3.40: qgis/connections-xyz/<name>/
+        for group_path in ('connections/xyz/items', 'qgis/connections-xyz'):
+            settings.beginGroup(group_path)
+            for name in sorted(settings.childGroups()):
+                settings.beginGroup(name)
+                url = settings.value('url', '')
+                if url:
+                    try:
+                        zmin = int(settings.value('zmin', 0))
+                    except (ValueError, TypeError):
+                        zmin = 0
+                    try:
+                        zmax = int(settings.value('zmax', 18))
+                    except (ValueError, TypeError):
+                        zmax = 18
+                    meta = {
+                        'type': 'xyz',
+                        'url': url,
+                        'zmin': zmin,
+                        'zmax': zmax,
+                    }
+                    results.append((name, meta))
+                settings.endGroup()
             settings.endGroup()
-            if url:
-                meta = {
-                    'type': 'xyz',
-                    'url': url,
-                    'zmin': zmin,
-                    'zmax': zmax,
-                }
-                results.append((name, meta))
-        settings.endGroup()
+            if results:
+                break
         return results
 
     @staticmethod
