@@ -7,7 +7,7 @@
 [general]
 name=Kozu XML Integrator
 qgisMinimumVersion=3.0
-description=Integrates and exports Japanese cadastral XML (Kozu) data as a GIS layer.
+description=Cross-references cadastral XML (Kozu) with forest planning maps for on-site boundary survey support.
 version=0.1.0
 author=Hideharu Masai
 email=hideharumasai@void.mints.ne.jp
