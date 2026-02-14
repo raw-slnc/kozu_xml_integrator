@@ -914,7 +914,11 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         settings = QgsPalLayerSettings()
         settings.fieldName = expression
         settings.isExpression = True
-        settings.placement = QgsPalLayerSettings.OverPoint
+        try:
+            from qgis.core import Qgis
+            settings.placement = Qgis.LabelPlacement.OverPoint
+        except (AttributeError, ImportError):
+            settings.placement = QgsPalLayerSettings.OverPoint
 
         text_format = QgsTextFormat()
         text_format.setSize(7)
