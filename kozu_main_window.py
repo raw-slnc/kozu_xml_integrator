@@ -292,7 +292,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         # Current preview state
         self._current_xml_meta_id: Optional[int] = None
         self._current_municipality: str = ''  # Municipality name from XML meta
-        self._current_scale: int = 600  # Default scale denominator
+        self._current_scale: int = 600  # Effective scale denominator (may be overridden)
+        self._original_scale: int = 600  # Original scale from XML/DB
         self._max_zoom_out_scale: float = 0  # Zoom-out limit (scale denominator)
         self._full_extent = None  # Full data extent for zoom-out limit
         self._scale_guard: bool = False  # Guard against recursive scale changes
@@ -302,6 +303,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._link_config: Optional[dict] = None
         self._highlights: list = []  # QgsHighlight on preview canvas
         self._main_highlights: list = []  # QgsHighlight on main canvas
+        self._matched_preview_fids: set = set()  # Accumulated matched preview feature IDs for export
         self._prev_main_tool = None  # Saved main canvas tool
         self._main_select_tool: Optional[MainSelectTool] = None
         self._preview_tool: Optional[PreviewClickTool] = None
@@ -400,6 +402,17 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self.treeXmlFiles.itemSelectionChanged.connect(self._on_xml_selected)
         self.chkShowChiban.stateChanged.connect(self._update_labels)
         self.chkShowEstArea.stateChanged.connect(self._update_labels)
+
+        # Scale override checkboxes (mutual exclusivity within each group)
+        self.chkScale5000to1000.stateChanged.connect(
+            lambda state: self._on_scale_override_changed(state, 5000, 1000, self.chkScale5000to500))
+        self.chkScale5000to500.stateChanged.connect(
+            lambda state: self._on_scale_override_changed(state, 5000, 500, self.chkScale5000to1000))
+        self.chkScale3000to1200.stateChanged.connect(
+            lambda state: self._on_scale_override_changed(state, 3000, 1200, self.chkScale3000to600))
+        self.chkScale3000to600.stateChanged.connect(
+            lambda state: self._on_scale_override_changed(state, 3000, 600, self.chkScale3000to1200))
+
         self.btnLinkSettings.clicked.connect(self._on_link_settings)
         self.btnLinkClear.clicked.connect(self._on_link_clear)
         self.chkEnableMainSelect.stateChanged.connect(self._on_enable_main_select)
@@ -687,6 +700,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
     def _on_oaza_selected(self, index: int):
         """Handle oaza selection: populate XML file list."""
         self._clear_highlights()
+        self._matched_preview_fids.clear()
         self.treeXmlFiles.clear()
         self._current_xml_meta_id = None
 
@@ -697,7 +711,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         try:
             with self.db.connection() as conn:
                 cursor = conn.execute("""
-                    SELECT DISTINCT m.id, m.file_name, m.map_name, m.crs_type, m.fude_count
+                    SELECT DISTINCT m.id, m.file_name, m.map_name, m.crs_type,
+                           m.fude_count, m.scale_denominator
                     FROM t_xml_meta m
                     JOIN t_fude_poly f ON f.xml_meta_id = m.id
                     WHERE f.oaza_name = ?
@@ -706,10 +721,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 rows = cursor.fetchall()
 
             for row in rows:
-                xml_id, file_name, map_name, crs_type, fude_count = row
+                xml_id, file_name, map_name, crs_type, fude_count, db_scale = row
 
-                # Extract scale from map name
-                scale = self._extract_scale_from_name(map_name or '')
+                # DB値を優先、なければ地図名から正規表現で抽出
+                scale = db_scale or self._extract_scale_from_name(map_name or '')
                 scale_str = f"1:{scale}" if scale else "不明"
 
                 # Shorten crs_type for display
@@ -749,7 +764,14 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         map_name = item.text(0)
 
         self._current_xml_meta_id = xml_meta_id
-        self._current_scale = scale or 600
+        self._original_scale = scale or 600
+        self._current_scale = self._original_scale
+
+        # Update scale override checkbox availability
+        self._update_scale_override_availability()
+
+        # Apply active override if applicable
+        self._apply_scale_override()
 
         self._load_xml_preview(xml_meta_id, map_name)
 
@@ -775,8 +797,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 """, (xml_meta_id,))
                 rows = cursor.fetchall()
 
-            # Clear highlights from previous selection
+            # Clear highlights and matched feature tracking from previous selection
             self._clear_highlights()
+            self._matched_preview_fids.clear()
 
             # Remove old preview layer
             if self.preview_layer:
@@ -864,8 +887,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 if not self.chkTileLock.isChecked():
                     self.chkShowTile.setChecked(False)
                 self.lblTileStatus.setText("任意座標系データ - タイル表示不可")
-                scale_str = f"1:{self._current_scale}" if self._current_scale else "不明"
-                self.lblPreviewCrs.setText(f"CRS: 任意座標系 / 縮尺: {scale_str}")
+                self._update_crs_label_with_override()
 
             # Update GPKG export button state
             self._update_export_gpkg_state()
@@ -934,6 +956,114 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         self.preview_layer.setLabeling(QgsVectorLayerSimpleLabeling(settings))
         self.preview_layer.setLabelsEnabled(True)
+
+    # ─── Scale Override ─────────────────────────────────────
+
+    def _update_scale_override_availability(self):
+        """Enable/disable scale override checkboxes based on original scale."""
+        is_5000 = self._original_scale == 5000
+        is_3000 = self._original_scale == 3000
+
+        self.chkScale5000to1000.setEnabled(is_5000)
+        self.chkScale5000to500.setEnabled(is_5000)
+        self.chkScale3000to1200.setEnabled(is_3000)
+        self.chkScale3000to600.setEnabled(is_3000)
+
+        # Uncheck options for non-matching groups
+        if not is_5000:
+            self.chkScale5000to1000.blockSignals(True)
+            self.chkScale5000to500.blockSignals(True)
+            self.chkScale5000to1000.setChecked(False)
+            self.chkScale5000to500.setChecked(False)
+            self.chkScale5000to1000.blockSignals(False)
+            self.chkScale5000to500.blockSignals(False)
+        if not is_3000:
+            self.chkScale3000to1200.blockSignals(True)
+            self.chkScale3000to600.blockSignals(True)
+            self.chkScale3000to1200.setChecked(False)
+            self.chkScale3000to600.setChecked(False)
+            self.chkScale3000to1200.blockSignals(False)
+            self.chkScale3000to600.blockSignals(False)
+
+    def _apply_scale_override(self):
+        """Apply active scale override to _current_scale."""
+        if self._original_scale == 5000:
+            if self.chkScale5000to1000.isChecked():
+                self._current_scale = 1000
+            elif self.chkScale5000to500.isChecked():
+                self._current_scale = 500
+            else:
+                self._current_scale = self._original_scale
+        elif self._original_scale == 3000:
+            if self.chkScale3000to1200.isChecked():
+                self._current_scale = 1200
+            elif self.chkScale3000to600.isChecked():
+                self._current_scale = 600
+            else:
+                self._current_scale = self._original_scale
+        else:
+            self._current_scale = self._original_scale
+
+    def _on_scale_override_changed(self, state, source_scale, target_scale, sibling_chk):
+        """Handle scale override checkbox toggle with mutual exclusivity."""
+        # Mutual exclusivity: uncheck sibling when checking this one
+        if state == Qt.Checked and sibling_chk.isChecked():
+            sibling_chk.blockSignals(True)
+            sibling_chk.setChecked(False)
+            sibling_chk.blockSignals(False)
+
+        # Update effective scale
+        self._apply_scale_override()
+
+        # After georeferencing: geometry was transformed with old scale,
+        # so full reload from DB is required to re-transform with new scale
+        if not self._is_arbitrary and self._current_xml_meta_id:
+            items = self.treeXmlFiles.selectedItems()
+            map_name = items[0].text(0) if items else ''
+            self._load_xml_preview(self._current_xml_meta_id, map_name)
+        else:
+            # Before georeferencing: lightweight recalculation is sufficient
+            self._recalculate_est_area()
+
+    def _recalculate_est_area(self):
+        """Recalculate est_area in preview layer with current scale, update labels."""
+        if not self.preview_layer:
+            return
+
+        scale_factor = (self._current_scale / 1000.0) ** 2
+        est_area_idx = self.preview_layer.fields().indexOf('est_area')
+        if est_area_idx < 0:
+            return
+
+        self.preview_layer.startEditing()
+        for feat in self.preview_layer.getFeatures():
+            area_sqm = feat['area_sqm']
+            coord_type = feat['coord_type']
+
+            if area_sqm and coord_type == '図上測量':
+                est_area = area_sqm * scale_factor
+            elif area_sqm:
+                est_area = area_sqm
+            else:
+                est_area = None
+
+            self.preview_layer.changeAttributeValue(feat.id(), est_area_idx, est_area)
+        self.preview_layer.commitChanges()
+
+        # Update labels and CRS display
+        self._apply_labels_to_layer()
+        self._update_crs_label_with_override()
+        self.map_canvas.refresh()
+
+    def _update_crs_label_with_override(self):
+        """Update CRS label text reflecting any active scale override."""
+        if not self._is_arbitrary:
+            return  # Public coords: CRS label managed elsewhere
+
+        scale_str = f"1:{self._current_scale}"
+        if self._current_scale != self._original_scale:
+            scale_str += f" (元: 1:{self._original_scale})"
+        self.lblPreviewCrs.setText(f"CRS: 任意座標系 / 縮尺: {scale_str}")
 
     def _update_labels(self):
         """Handle label toggle checkbox changes."""
@@ -1240,6 +1370,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             return
 
         self._clear_highlights()
+        self._matched_preview_fids.clear()
 
         # Find clicked feature in preview layer
         feat = self._find_feature_at_point(self.preview_layer, point, self.map_canvas)
@@ -1310,6 +1441,12 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             f"highlights={len(self._main_highlights)}, "
             f"is_arbitrary={self._is_arbitrary}"
         )
+
+        # Track clicked preview feature as matched (if match found in main)
+        if self._main_highlights:
+            self._matched_preview_fids.add(feat.id())
+            self._update_export_gpkg_state()
+
         if best_lot_feat:
             raw_target = best_lot_feat.geometry().centroid().asPoint()
             target_centroid = self._transform_point_to_preview_crs(
@@ -1375,6 +1512,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                         self.map_canvas, pf.geometry(), self.preview_layer, display_level
                     )
                     self._highlights.append(h)
+                    # Track reverse-matched preview features for export
+                    self._matched_preview_fids.add(pf.id())
+
+            self._update_export_gpkg_state()
 
     # ─── Behavior B: Main Window Click → Preview ────────────
 
@@ -1446,6 +1587,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             return
 
         self._clear_highlights()
+        self._matched_preview_fids.clear()
 
         _, lot_layer = self._get_link_layers()
         if not lot_layer:
@@ -1520,9 +1662,13 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 self.map_canvas, pf.geometry(), self.preview_layer, level
             )
             self._highlights.append(h)
+            # Track matched preview features for export
+            self._matched_preview_fids.add(fid)
             combined_extent.combineExtentWith(pf.geometry().boundingBox())
             if fid == best_feat_id:
                 best_feat = pf
+
+        self._update_export_gpkg_state()
 
         # Center preview on best match (keep current scale)
         if best_feat:
@@ -2201,20 +2347,27 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
     # ─── GPKG Export ────────────────────────────────────────
 
     def _update_export_gpkg_state(self):
-        """Enable/disable GPKG export button based on preview state."""
+        """Enable/disable GPKG export button based on matched features."""
         enabled = (
             self.preview_layer is not None
-            and self.preview_layer.featureCount() > 0
+            and len(self._matched_preview_fids) > 0
             and not self._is_arbitrary
         )
         self.btnExportGpkg.setEnabled(enabled)
 
     def _on_export_gpkg(self):
-        """Export scaled preview data to GeoPackage."""
+        """Export matched (highlighted) preview features to GeoPackage."""
         if not self.preview_layer or self._is_arbitrary:
             QMessageBox.warning(
                 self, "エクスポート",
                 "スケール済みのプレビューデータがありません。"
+            )
+            return
+
+        if not self._matched_preview_fids:
+            QMessageBox.warning(
+                self, "エクスポート",
+                "照合済みの地物がありません。\n照合を行ってからエクスポートしてください。"
             )
             return
 
@@ -2231,10 +2384,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             return
 
         try:
-            self._write_gpkg(save_path)
+            count = self._write_gpkg(save_path)
             QMessageBox.information(
                 self, "エクスポート",
-                f"GeoPackageを出力しました:\n{save_path}"
+                f"照合済み {count} 筆をGeoPackageに出力しました:\n{save_path}"
             )
         except Exception as e:
             logger.error(f"GPKG export failed: {e}")
@@ -2243,17 +2396,25 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 f"エクスポート中にエラーが発生しました:\n{e}"
             )
 
-    def _write_gpkg(self, path: str):
-        """Write current preview features to a GeoPackage file."""
+    def _write_gpkg(self, path: str) -> int:
+        """Write matched preview features to a GeoPackage file.
+
+        Only exports features that have been matched through 照合 operations.
+        Preserves georeferenced coordinates and adds scale information.
+
+        Returns:
+            Number of features exported.
+        """
         from qgis.core import QgsVectorFileWriter, QgsFields
 
         crs = self.map_canvas.mapSettings().destinationCrs()
 
-        # Define output fields
+        # Define output fields (with scale info)
         fields = QgsFields()
         fields.append(QgsField("oaza_name", QVariant.String))
         fields.append(QgsField("chiban", QVariant.String))
         fields.append(QgsField("est_area", QVariant.Double))
+        fields.append(QgsField("scale", QVariant.Int))
 
         writer = QgsVectorFileWriter(
             path, "UTF-8", fields, self.preview_layer.wkbType(),
@@ -2262,17 +2423,23 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         if writer.hasError() != QgsVectorFileWriter.NoError:
             raise RuntimeError(writer.errorMessage())
 
+        count = 0
         for feat in self.preview_layer.getFeatures():
+            if feat.id() not in self._matched_preview_fids:
+                continue
             out_feat = QgsFeature()
             out_feat.setGeometry(feat.geometry())
             out_feat.setAttributes([
                 feat["oaza_name"],
                 feat["chiban"],
                 feat["est_area"],
+                self._current_scale,
             ])
             writer.addFeature(out_feat)
+            count += 1
 
         del writer  # Flush and close
+        return count
 
     # ─── Lifecycle ──────────────────────────────────────────
 

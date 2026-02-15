@@ -89,6 +89,7 @@ class XmlMapHeader:
     municipality_code: str
     municipality_name: str
     crs_type: str  # "任意座標系" or "公共座標8系"
+    scale_denominator: Optional[int] = None  # 縮尺分母 (e.g. 600 for 1:600)
     geodetic_type: Optional[str] = None  # 測地系判別
     transform_program: Optional[str] = None  # 変換プログラム
     transform_version: Optional[str] = None
@@ -137,6 +138,9 @@ class KozuXmlParser:
 
         # First, parse the header (small, so regular parsing is fine)
         header = self._parse_header()
+
+        # Parse scale denominator from 図郭 elements
+        header.scale_denominator = self._parse_scale()
 
         # Initialize data containers
         data = XmlMapData(header=header)
@@ -216,6 +220,38 @@ class KozuXmlParser:
                 elem.clear()
 
         return XmlMapHeader(**header_data)
+
+    def _parse_scale(self) -> Optional[int]:
+        """
+        Parse scale denominator from 図郭 elements.
+
+        1XML = 1縮尺 が保証されているため、最初の <縮尺分母> を返す。
+
+        Returns:
+            Scale denominator (e.g. 600 for 1:600), or None if not found
+        """
+        try:
+            with open(self.xml_path, 'rb') as f:
+                context = etree.iterparse(
+                    f,
+                    events=('end',),
+                    tag=[f'{{{NS_DEFAULT}}}縮尺分母']
+                )
+
+                for event, elem in context:
+                    if elem.text:
+                        try:
+                            val = int(elem.text)
+                            if val > 0:
+                                elem.clear()
+                                return val
+                        except (ValueError, TypeError):
+                            pass
+                    elem.clear()
+        except Exception as e:
+            logger.warning(f"Error parsing scale from {self.xml_path}: {e}")
+
+        return None
 
     def _parse_spatial_attributes(self, data: XmlMapData) -> None:
         """

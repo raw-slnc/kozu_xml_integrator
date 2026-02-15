@@ -172,6 +172,7 @@ class XmlImporter:
                 point_count=len(xml_data.points),
                 curve_count=len(xml_data.curves),
                 fude_count=len(xml_data.fude_list),
+                scale_denominator=xml_data.header.scale_denominator,
                 geom_wkt=envelope_wkt
             )
 

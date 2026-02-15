@@ -324,22 +324,83 @@
               <string>表示オプション</string>
              </property>
              <layout class="QVBoxLayout" name="displayOptionsLayout">
+              <!-- Row 1: Display toggles -->
               <item>
-               <widget class="QCheckBox" name="chkShowChiban">
+               <layout class="QHBoxLayout" name="displayTogglesRow">
+                <item>
+                 <widget class="QCheckBox" name="chkShowChiban">
+                  <property name="text">
+                   <string>地番を表示</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QCheckBox" name="chkShowEstArea">
+                  <property name="text">
+                   <string>推定面積を表示</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <!-- Row 2: Scale override label -->
+              <item>
+               <widget class="QLabel" name="lblScaleOverride">
                 <property name="text">
-                 <string>地番を表示</string>
+                 <string>縮尺読替:</string>
                 </property>
-                <property name="checked">
-                 <bool>true</bool>
+                <property name="styleSheet">
+                 <string>font-size: 10px; margin-top: 2px; margin-bottom: 0px;</string>
                 </property>
                </widget>
               </item>
+              <!-- Row 3-4: Scale override 2x2 grid -->
               <item>
-               <widget class="QCheckBox" name="chkShowEstArea">
-                <property name="text">
-                 <string>推定面積を表示</string>
-                </property>
-               </widget>
+               <layout class="QGridLayout" name="scaleOverrideGrid">
+                <item row="0" column="0">
+                 <widget class="QCheckBox" name="chkScale5000to1000">
+                  <property name="text">
+                   <string>1:5000→1:1000</string>
+                  </property>
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QCheckBox" name="chkScale3000to1200">
+                  <property name="text">
+                   <string>1:3000→1:1200</string>
+                  </property>
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QCheckBox" name="chkScale5000to500">
+                  <property name="text">
+                   <string>1:5000→1:500</string>
+                  </property>
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="1">
+                 <widget class="QCheckBox" name="chkScale3000to600">
+                  <property name="text">
+                   <string>1:3000→1:600</string>
+                  </property>
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
               </item>
              </layout>
             </widget>

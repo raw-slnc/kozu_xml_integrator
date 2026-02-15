@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS t_xml_meta (
     point_count INTEGER DEFAULT 0,
     curve_count INTEGER DEFAULT 0,
     fude_count INTEGER DEFAULT 0,
+    scale_denominator INTEGER,
     status TEXT DEFAULT 'imported',
     transform_params TEXT,
     import_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -139,6 +140,7 @@ class XmlMetaRecord:
     point_count: int = 0
     curve_count: int = 0
     fude_count: int = 0
+    scale_denominator: Optional[int] = None
     status: str = 'imported'
     transform_params: Optional[str] = None
     geom_wkt: str = ''
@@ -261,6 +263,7 @@ class DatabaseManager:
             cursor = conn.cursor()
 
             # Check and add missing columns to t_xml_meta
+            self._add_column_if_missing(cursor, 't_xml_meta', 'scale_denominator', 'INTEGER')
             self._add_column_if_missing(cursor, 't_xml_meta', 'updated_date', 'TIMESTAMP')
 
             # Check and add missing columns to t_fude_poly
@@ -329,28 +332,30 @@ class DatabaseManager:
                     INSERT INTO t_xml_meta
                     (file_name, map_name, municipality_code, municipality_name,
                      oaza_name, crs_type, geodetic_type, transform_program,
-                     point_count, curve_count, fude_count, status, geom)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GeomFromText(?, 0))
+                     point_count, curve_count, fude_count, scale_denominator,
+                     status, geom)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GeomFromText(?, 0))
                 """, (
                     record.file_name, record.map_name, record.municipality_code,
                     record.municipality_name, record.oaza_name, record.crs_type,
                     record.geodetic_type, record.transform_program,
                     record.point_count, record.curve_count, record.fude_count,
-                    record.status, record.geom_wkt
+                    record.scale_denominator, record.status, record.geom_wkt
                 ))
             else:
                 cursor.execute("""
                     INSERT INTO t_xml_meta
                     (file_name, map_name, municipality_code, municipality_name,
                      oaza_name, crs_type, geodetic_type, transform_program,
-                     point_count, curve_count, fude_count, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     point_count, curve_count, fude_count, scale_denominator,
+                     status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     record.file_name, record.map_name, record.municipality_code,
                     record.municipality_name, record.oaza_name, record.crs_type,
                     record.geodetic_type, record.transform_program,
                     record.point_count, record.curve_count, record.fude_count,
-                    record.status
+                    record.scale_denominator, record.status
                 ))
 
             return cursor.lastrowid
@@ -419,8 +424,8 @@ class DatabaseManager:
             cursor.execute("""
                 SELECT id, file_name, map_name, municipality_code, municipality_name,
                        oaza_name, crs_type, geodetic_type, transform_program,
-                       point_count, curve_count, fude_count, status,
-                       AsText(geom) as geom_wkt
+                       point_count, curve_count, fude_count, scale_denominator,
+                       status, AsText(geom) as geom_wkt
                 FROM t_xml_meta WHERE id = ?
             """, (meta_id,))
             row = cursor.fetchone()
@@ -433,8 +438,8 @@ class DatabaseManager:
             cursor.execute("""
                 SELECT id, file_name, map_name, municipality_code, municipality_name,
                        oaza_name, crs_type, geodetic_type, transform_program,
-                       point_count, curve_count, fude_count, status,
-                       AsText(geom) as geom_wkt
+                       point_count, curve_count, fude_count, scale_denominator,
+                       status, AsText(geom) as geom_wkt
                 FROM t_xml_meta WHERE file_name = ?
             """, (filename,))
             row = cursor.fetchone()
@@ -447,8 +452,8 @@ class DatabaseManager:
             cursor.execute("""
                 SELECT id, file_name, map_name, municipality_code, municipality_name,
                        oaza_name, crs_type, geodetic_type, transform_program,
-                       point_count, curve_count, fude_count, status,
-                       AsText(geom) as geom_wkt
+                       point_count, curve_count, fude_count, scale_denominator,
+                       status, AsText(geom) as geom_wkt
                 FROM t_xml_meta ORDER BY file_name
             """)
             return [dict(row) for row in cursor.fetchall()]
@@ -511,7 +516,7 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT DISTINCT m.id, m.file_name, m.map_name, m.crs_type,
-                       m.fude_count, m.status
+                       m.fude_count, m.scale_denominator, m.status
                 FROM t_xml_meta m
                 JOIN t_fude_poly f ON m.id = f.xml_meta_id
                 WHERE f.oaza_name = ?
@@ -525,7 +530,7 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT id, file_name, map_name, municipality_code, municipality_name,
-                       oaza_name, crs_type, fude_count, status
+                       oaza_name, crs_type, fude_count, scale_denominator, status
                 FROM t_xml_meta WHERE crs_type = ?
                 ORDER BY file_name
             """, (crs_type,))
