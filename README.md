@@ -22,6 +22,12 @@ XMLファイルに含まれる大字と森林計画図の大字を照らし合�
 - Overlay tile display (supports QGIS registered XYZ connections and project layers) / オーバーレイタイル表示（QGIS登録済みXYZ接続・プロジェクトレイヤー対応）
 - Export as GIS layer / GISレイヤとしての出力
 
+## Screenshots / スクリーンショット
+
+![Main UI / メインUI](plugin_Main_UI.png)
+
+![Match result view on QGIS / QGIS上での照合結果表示](plugin_match_view.png)
+
 ## Note on Data Compatibility / データ互換性について
 
 > This plugin has been developed and tested with forest planning map data published as open data by Shizuoka Prefecture, Japan. While the plugin's functionality is designed to be generic, the expected attribute structure (field names, parcel number format, etc.) is based on this dataset. If you use forest planning map data from other prefectures or sources, differences in data structure may cause the plugin to not function correctly. Please verify that your data structure matches before use.
