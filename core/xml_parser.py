@@ -136,214 +136,139 @@ class KozuXmlParser:
         """
         logger.info(f"Parsing XML file: {self.xml_path}")
 
-        # First, parse the header (small, so regular parsing is fine)
-        header = self._parse_header()
+        # etree.iterparse は _IterparseContext（lxml C レベルジェネレータ）を生成する。
+        # ループを break/return で途中脱出すると未消費の _IterparseContext が GC 待ちに残り、
+        # 次の QThread::start() の PyGILState_Release 時に xmlDictFree が呼ばれて
+        # Windows の未初期化 CRITICAL_SECTION をロックしようとしアクセス違反になる。
+        # → etree.parse() でフルロードし、iterparse を完全に排除する。
+        with open(self.xml_path, 'rb') as f:
+            tree = etree.parse(f)
+        root = tree.getroot()
 
-        # Parse scale denominator from 図郭 elements
-        header.scale_denominator = self._parse_scale()
+        header = self._parse_header(root)
+        header.scale_denominator = self._parse_scale(root)
 
-        # Initialize data containers
         data = XmlMapData(header=header)
 
-        # Stream parse the spatial and thematic attributes
-        self._parse_spatial_attributes(data)
-        self._parse_thematic_attributes(data)
+        self._parse_spatial_attributes(root, data)
+        self._parse_thematic_attributes(root, data)
 
         logger.info(f"Parsed: {len(data.points)} points, {len(data.curves)} curves, "
                    f"{len(data.surfaces)} surfaces, {len(data.fude_list)} parcels")
 
         return data
 
-    def _parse_header(self) -> XmlMapHeader:
+    def _parse_header(self, root: etree._Element) -> XmlMapHeader:
         """
-        Parse XML header information.
+        Parse XML header information from pre-parsed root element.
+
+        Args:
+            root: Root element of the parsed XML tree
 
         Returns:
             XmlMapHeader: Header data
         """
-        # Use iterparse but only for header elements (fast, early exit)
-        header_data = {
-            'file_name': self.xml_path.name,
-            'map_name': '',
-            'municipality_code': '',
-            'municipality_name': '',
-            'crs_type': '',
-            'geodetic_type': None,
-            'transform_program': None,
-            'transform_version': None,
-            'param_version': None,
-        }
+        def find_text(tag: str) -> str:
+            elem = root.find(f'.//{{{NS_DEFAULT}}}{tag}')
+            return elem.text if elem is not None and elem.text else ''
 
-        # Parse only header elements
-        # Open file explicitly to ensure proper cleanup
-        with open(self.xml_path, 'rb') as f:
-            context = etree.iterparse(
-                f,
-                events=('end',),
-                tag=[
-                    f'{{{NS_DEFAULT}}}地図名',
-                    f'{{{NS_DEFAULT}}}市区町村コード',
-                    f'{{{NS_DEFAULT}}}市区町村名',
-                    f'{{{NS_DEFAULT}}}座標系',
-                    f'{{{NS_DEFAULT}}}測地系判別',
-                    f'{{{NS_DEFAULT}}}変換プログラム',
-                    f'{{{NS_DEFAULT}}}変換プログラムバージョン',
-                    f'{{{NS_DEFAULT}}}変換パラメータバージョン',
-                    f'{{{NS_DEFAULT}}}空間属性',  # Stop at this element
-                ]
-            )
+        return XmlMapHeader(
+            file_name=self.xml_path.name,
+            map_name=find_text('地図名'),
+            municipality_code=find_text('市区町村コード'),
+            municipality_name=find_text('市区町村名'),
+            crs_type=find_text('座標系'),
+            geodetic_type=find_text('測地系判別') or None,
+            transform_program=find_text('変換プログラム') or None,
+            transform_version=find_text('変換プログラムバージョン') or None,
+            param_version=find_text('変換パラメータバージョン') or None,
+        )
 
-            for event, elem in context:
-                local_name = elem.tag.split('}')[-1]
-
-                if local_name == '地図名':
-                    header_data['map_name'] = elem.text or ''
-                elif local_name == '市区町村コード':
-                    header_data['municipality_code'] = elem.text or ''
-                elif local_name == '市区町村名':
-                    header_data['municipality_name'] = elem.text or ''
-                elif local_name == '座標系':
-                    header_data['crs_type'] = elem.text or ''
-                elif local_name == '測地系判別':
-                    header_data['geodetic_type'] = elem.text
-                elif local_name == '変換プログラム':
-                    header_data['transform_program'] = elem.text
-                elif local_name == '変換プログラムバージョン':
-                    header_data['transform_version'] = elem.text
-                elif local_name == '変換パラメータバージョン':
-                    header_data['param_version'] = elem.text
-                elif local_name == '空間属性':
-                    # Stop parsing header, spatial data starts here
-                    break
-
-                # Clear element to free memory
-                elem.clear()
-
-        return XmlMapHeader(**header_data)
-
-    def _parse_scale(self) -> Optional[int]:
+    def _parse_scale(self, root: etree._Element) -> Optional[int]:
         """
         Parse scale denominator from 図郭 elements.
 
         1XML = 1縮尺 が保証されているため、最初の <縮尺分母> を返す。
 
+        Args:
+            root: Root element of the parsed XML tree
+
         Returns:
             Scale denominator (e.g. 600 for 1:600), or None if not found
         """
         try:
-            with open(self.xml_path, 'rb') as f:
-                context = etree.iterparse(
-                    f,
-                    events=('end',),
-                    tag=[f'{{{NS_DEFAULT}}}縮尺分母']
-                )
-
-                for event, elem in context:
-                    if elem.text:
-                        try:
-                            val = int(elem.text)
-                            if val > 0:
-                                elem.clear()
-                                return val
-                        except (ValueError, TypeError):
-                            pass
-                    elem.clear()
+            elem = root.find(f'.//{{{NS_DEFAULT}}}縮尺分母')
+            if elem is not None and elem.text:
+                val = int(elem.text)
+                if val > 0:
+                    return val
         except Exception as e:
             logger.warning(f"Error parsing scale from {self.xml_path}: {e}")
 
         return None
 
-    def _parse_spatial_attributes(self, data: XmlMapData) -> None:
+    def _parse_spatial_attributes(self, root: etree._Element, data: XmlMapData) -> None:
         """
         Parse spatial attributes (GM_Point, GM_Curve, GM_Surface).
 
         Args:
+            root: Root element of the parsed XML tree
             data: XmlMapData to populate
         """
-        with open(self.xml_path, 'rb') as f:
-            context = etree.iterparse(
-                f,
-                events=('end',),
-                tag=[
-                    f'{{{NS_ZMN}}}GM_Point',
-                    f'{{{NS_ZMN}}}GM_Curve',
-                    f'{{{NS_ZMN}}}GM_Surface',
-                ]
-            )
+        for elem in root.iter(f'{{{NS_ZMN}}}GM_Point'):
+            try:
+                point = self._parse_gm_point(elem)
+                if point:
+                    data.points[point.id] = point
+            except Exception as e:
+                logger.warning(f"Error parsing GM_Point: {e}")
 
-            for event, elem in context:
-                local_name = elem.tag.split('}')[-1]
+        for elem in root.iter(f'{{{NS_ZMN}}}GM_Curve'):
+            try:
+                curve = self._parse_gm_curve(elem, data.points)
+                if curve:
+                    data.curves[curve.id] = curve
+            except Exception as e:
+                logger.warning(f"Error parsing GM_Curve: {e}")
 
-                try:
-                    if local_name == 'GM_Point':
-                        point = self._parse_gm_point(elem)
-                        if point:
-                            data.points[point.id] = point
-                    elif local_name == 'GM_Curve':
-                        curve = self._parse_gm_curve(elem, data.points)
-                        if curve:
-                            data.curves[curve.id] = curve
-                    elif local_name == 'GM_Surface':
-                        surface = self._parse_gm_surface(elem)
-                        if surface:
-                            data.surfaces[surface.id] = surface
-                except Exception as e:
-                    logger.warning(f"Error parsing {local_name}: {e}")
+        for elem in root.iter(f'{{{NS_ZMN}}}GM_Surface'):
+            try:
+                surface = self._parse_gm_surface(elem)
+                if surface:
+                    data.surfaces[surface.id] = surface
+            except Exception as e:
+                logger.warning(f"Error parsing GM_Surface: {e}")
 
-                # Clear element and ancestors to free memory
-                elem.clear()
-                while elem.getprevious() is not None:
-                    parent = elem.getparent()
-                    if parent is not None:
-                        del parent[0]
-                    else:
-                        break
-
-    def _parse_thematic_attributes(self, data: XmlMapData) -> None:
+    def _parse_thematic_attributes(self, root: etree._Element, data: XmlMapData) -> None:
         """
         Parse thematic attributes (筆界点, 筆界線, 筆).
 
         Args:
+            root: Root element of the parsed XML tree
             data: XmlMapData to populate
         """
-        with open(self.xml_path, 'rb') as f:
-            context = etree.iterparse(
-                f,
-                events=('end',),
-                tag=[
-                    f'{{{NS_DEFAULT}}}筆界点',
-                    f'{{{NS_DEFAULT}}}筆界線',
-                    f'{{{NS_DEFAULT}}}筆',
-                ]
-            )
+        for elem in root.iter(
+            f'{{{NS_DEFAULT}}}筆界点',
+            f'{{{NS_DEFAULT}}}筆界線',
+            f'{{{NS_DEFAULT}}}筆',
+        ):
+            local_name = elem.tag.split('}')[-1]
 
-            for event, elem in context:
-                local_name = elem.tag.split('}')[-1]
-
-                try:
-                    if local_name == '筆界点':
-                        hikkaiten = self._parse_hikkaiten(elem)
-                        if hikkaiten:
-                            data.hikkaiten.append(hikkaiten)
-                    elif local_name == '筆界線':
-                        hikkaisen = self._parse_hikkaisen(elem)
-                        if hikkaisen:
-                            data.hikkaisen.append(hikkaisen)
-                    elif local_name == '筆':
-                        fude = self._parse_fude(elem)
-                        if fude:
-                            data.fude_list.append(fude)
-                except Exception as e:
-                    logger.warning(f"Error parsing {local_name}: {e}")
-
-                # Clear element to free memory
-                elem.clear()
-                while elem.getprevious() is not None:
-                    parent = elem.getparent()
-                    if parent is not None:
-                        del parent[0]
-                    else:
-                        break
+            try:
+                if local_name == '筆界点':
+                    hikkaiten = self._parse_hikkaiten(elem)
+                    if hikkaiten:
+                        data.hikkaiten.append(hikkaiten)
+                elif local_name == '筆界線':
+                    hikkaisen = self._parse_hikkaisen(elem)
+                    if hikkaisen:
+                        data.hikkaisen.append(hikkaisen)
+                elif local_name == '筆':
+                    fude = self._parse_fude(elem)
+                    if fude:
+                        data.fude_list.append(fude)
+            except Exception as e:
+                logger.warning(f"Error parsing {local_name}: {e}")
 
     def _parse_gm_point(self, elem: etree._Element) -> Optional[GmPoint]:
         """Parse GM_Point element."""
