@@ -10,6 +10,7 @@ Handles the import tab UI logic:
 
 from pathlib import Path
 from typing import Optional, Callable, List
+import gc
 import logging
 
 from qgis.PyQt.QtWidgets import (
@@ -704,6 +705,11 @@ class ImportPanelController:
         self.dock.btnStartImport.setText("インポート中...")
         self.dock.progressBar.setValue(0)
         self.dock.lblProgressStatus.setText("開始中...")
+
+        # lxml 等の C レベルジェネレータが GC 待ちのまま QThread::start() に突入すると
+        # PyGen_Finalize → xmlDictFree が Windows の未初期化 CRITICAL_SECTION を
+        # ロックしてアクセス違反になる。gc.collect() でメインスレッド上で事前に解放する。
+        gc.collect()
 
         # Start thread
         self._thread.start()

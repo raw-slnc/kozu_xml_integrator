@@ -2,8 +2,9 @@
 """
 XML Parser for Legal Cadastral Map (法務局地図XML)
 
-This module provides streaming XML parsing for large cadastral map files
-using lxml.iterparse for memory efficiency.
+This module parses cadastral map files using the stdlib xml.etree.ElementTree.
+lxml は Windows の QThread 起動時に xmlDictFree クラッシュを引き起こすため
+使用しない（lxml の Cython ジェネレータが PyGen_Finalize 経由で GC される問題）。
 
 XML Structure:
 - 地図 (root)
@@ -14,7 +15,7 @@ XML Structure:
 from typing import Dict, List, Tuple, Optional, Generator, Any
 from dataclasses import dataclass, field
 from pathlib import Path
-from lxml import etree
+import xml.etree.ElementTree as ET
 import logging
 
 logger = logging.getLogger(__name__)
@@ -110,10 +111,11 @@ class XmlMapData:
 
 class KozuXmlParser:
     """
-    Streaming XML parser for Legal Cadastral Map (法務局地図XML)
+    XML parser for Legal Cadastral Map (法務局地図XML)
 
-    Uses lxml.iterparse for memory-efficient parsing of large files.
-    Processes elements incrementally and releases memory after processing.
+    Parses the full XML tree with stdlib xml.etree.ElementTree.parse(),
+    then navigates with find()/iter(). lxml is intentionally avoided
+    to prevent xmlDictFree crashes on Windows when QThread starts.
     """
 
     def __init__(self, xml_path: Path):
@@ -136,13 +138,12 @@ class KozuXmlParser:
         """
         logger.info(f"Parsing XML file: {self.xml_path}")
 
-        # etree.iterparse は _IterparseContext（lxml C レベルジェネレータ）を生成する。
-        # ループを break/return で途中脱出すると未消費の _IterparseContext が GC 待ちに残り、
-        # 次の QThread::start() の PyGILState_Release 時に xmlDictFree が呼ばれて
-        # Windows の未初期化 CRITICAL_SECTION をロックしようとしアクセス違反になる。
-        # → etree.parse() でフルロードし、iterparse を完全に排除する。
+        # lxml は Cython ジェネレータ（_MultiTagMatcher.iter_elements 等）を生成する。
+        # これらが GC される際に PyGen_Finalize → xmlDictFree が呼ばれ、
+        # Windows の QThread 起動時（PyGILState_Release）にアクセス違反になる。
+        # → stdlib xml.etree.ElementTree を使用し lxml を完全に排除する。
         with open(self.xml_path, 'rb') as f:
-            tree = etree.parse(f)
+            tree = ET.parse(f)
         root = tree.getroot()
 
         header = self._parse_header(root)
@@ -158,7 +159,7 @@ class KozuXmlParser:
 
         return data
 
-    def _parse_header(self, root: etree._Element) -> XmlMapHeader:
+    def _parse_header(self, root: ET.Element) -> XmlMapHeader:
         """
         Parse XML header information from pre-parsed root element.
 
@@ -184,7 +185,7 @@ class KozuXmlParser:
             param_version=find_text('変換パラメータバージョン') or None,
         )
 
-    def _parse_scale(self, root: etree._Element) -> Optional[int]:
+    def _parse_scale(self, root: ET.Element) -> Optional[int]:
         """
         Parse scale denominator from 図郭 elements.
 
@@ -207,7 +208,7 @@ class KozuXmlParser:
 
         return None
 
-    def _parse_spatial_attributes(self, root: etree._Element, data: XmlMapData) -> None:
+    def _parse_spatial_attributes(self, root: ET.Element, data: XmlMapData) -> None:
         """
         Parse spatial attributes (GM_Point, GM_Curve, GM_Surface).
 
@@ -239,7 +240,7 @@ class KozuXmlParser:
             except Exception as e:
                 logger.warning(f"Error parsing GM_Surface: {e}")
 
-    def _parse_thematic_attributes(self, root: etree._Element, data: XmlMapData) -> None:
+    def _parse_thematic_attributes(self, root: ET.Element, data: XmlMapData) -> None:
         """
         Parse thematic attributes (筆界点, 筆界線, 筆).
 
@@ -247,30 +248,32 @@ class KozuXmlParser:
             root: Root element of the parsed XML tree
             data: XmlMapData to populate
         """
-        for elem in root.iter(
-            f'{{{NS_DEFAULT}}}筆界点',
-            f'{{{NS_DEFAULT}}}筆界線',
-            f'{{{NS_DEFAULT}}}筆',
-        ):
-            local_name = elem.tag.split('}')[-1]
-
+        # stdlib ET.Element.iter() は単一タグのみ対応のため、タグごとにループを分ける
+        for elem in root.iter(f'{{{NS_DEFAULT}}}筆界点'):
             try:
-                if local_name == '筆界点':
-                    hikkaiten = self._parse_hikkaiten(elem)
-                    if hikkaiten:
-                        data.hikkaiten.append(hikkaiten)
-                elif local_name == '筆界線':
-                    hikkaisen = self._parse_hikkaisen(elem)
-                    if hikkaisen:
-                        data.hikkaisen.append(hikkaisen)
-                elif local_name == '筆':
-                    fude = self._parse_fude(elem)
-                    if fude:
-                        data.fude_list.append(fude)
+                hikkaiten = self._parse_hikkaiten(elem)
+                if hikkaiten:
+                    data.hikkaiten.append(hikkaiten)
             except Exception as e:
-                logger.warning(f"Error parsing {local_name}: {e}")
+                logger.warning(f"Error parsing 筆界点: {e}")
 
-    def _parse_gm_point(self, elem: etree._Element) -> Optional[GmPoint]:
+        for elem in root.iter(f'{{{NS_DEFAULT}}}筆界線'):
+            try:
+                hikkaisen = self._parse_hikkaisen(elem)
+                if hikkaisen:
+                    data.hikkaisen.append(hikkaisen)
+            except Exception as e:
+                logger.warning(f"Error parsing 筆界線: {e}")
+
+        for elem in root.iter(f'{{{NS_DEFAULT}}}筆'):
+            try:
+                fude = self._parse_fude(elem)
+                if fude:
+                    data.fude_list.append(fude)
+            except Exception as e:
+                logger.warning(f"Error parsing 筆: {e}")
+
+    def _parse_gm_point(self, elem: ET.Element) -> Optional[GmPoint]:
         """Parse GM_Point element."""
         point_id = elem.get('id')
         if not point_id:
@@ -290,7 +293,7 @@ class KozuXmlParser:
         except (ValueError, TypeError):
             return None
 
-    def _parse_gm_curve(self, elem: etree._Element,
+    def _parse_gm_curve(self, elem: ET.Element,
                         points_dict: Optional[Dict[str, 'GmPoint']] = None) -> Optional[GmCurve]:
         """Parse GM_Curve element.
 
@@ -336,7 +339,7 @@ class KozuXmlParser:
 
         return GmCurve(id=curve_id, points=points)
 
-    def _parse_gm_surface(self, elem: etree._Element) -> Optional[GmSurface]:
+    def _parse_gm_surface(self, elem: ET.Element) -> Optional[GmSurface]:
         """Parse GM_Surface element."""
         surface_id = elem.get('id')
         if not surface_id:
@@ -369,7 +372,7 @@ class KozuXmlParser:
             interior_curve_refs=interior_refs
         )
 
-    def _parse_hikkaiten(self, elem: etree._Element) -> Optional[Hikkaiten]:
+    def _parse_hikkaiten(self, elem: ET.Element) -> Optional[Hikkaiten]:
         """Parse 筆界点 element."""
         point_name_elem = elem.find(f'{{{NS_DEFAULT}}}点番名')
         shape_elem = elem.find(f'{{{NS_DEFAULT}}}形状')
@@ -382,7 +385,7 @@ class KozuXmlParser:
             shape_ref=shape_elem.get('idref', '')
         )
 
-    def _parse_hikkaisen(self, elem: etree._Element) -> Optional[Hikkaisen]:
+    def _parse_hikkaisen(self, elem: ET.Element) -> Optional[Hikkaisen]:
         """Parse 筆界線 element."""
         shape_elem = elem.find(f'{{{NS_DEFAULT}}}形状')
         line_type_elem = elem.find(f'{{{NS_DEFAULT}}}線種別')
@@ -392,7 +395,7 @@ class KozuXmlParser:
 
         return Hikkaisen(shape_ref=shape_ref, line_type=line_type)
 
-    def _parse_fude(self, elem: etree._Element) -> Optional[Fude]:
+    def _parse_fude(self, elem: ET.Element) -> Optional[Fude]:
         """Parse 筆 element."""
         fude_id = elem.get('id')
         if not fude_id:
