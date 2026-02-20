@@ -8,7 +8,7 @@
 name=Kozu XML Integrator
 qgisMinimumVersion=3.40
 description=Cross-references cadastral XML (Kozu) with forest planning maps for on-site boundary survey support.
-version=0.1.1
+version=0.1.2
 author=Hideharu Masai
 email=hideharumasai@void.mints.ne.jp
 
@@ -21,13 +21,15 @@ repository=https://github.com/raw-slnc/kozu_xml_integrator
 # Recommended items:
 
 hasProcessingProvider=no
-# changelog=
+changelog=
+    0.1.2 - Fix Windows crash (xmlDictFree) at QThread startup: replace lxml with stdlib xml.etree.ElementTree, add gc.collect() before thread start
+    0.1.1 - Fix Windows crash from batch QgsGeometry GC: replace geometry cache with WKT strings, use pure-Python shoelace formula for area calculation
 
 tags=cadastral,xml,forest,vector,japan,land registry,kozu,boundary
 
 homepage=https://github.com/raw-slnc/kozu_xml_integrator
 category=Vector
 icon=icon.png
-experimental=True
+experimental=False
 deprecated=False
 server=False
