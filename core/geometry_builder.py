@@ -309,9 +309,47 @@ class GeometryBuilder:
         """
         return self._get_or_build_wkt(fude.shape_ref)
 
+    def compute_fude_area(self, fude: Fude) -> float:
+        """Compute planar area of a fude polygon using the shoelace formula.
+
+        純Pythonで面積を計算し、QgsGeometry/GEOSオブジェクトをワーカースレッドで
+        生成することを避ける。穴あり（interior ring）は外周面積から差し引く。
+
+        Args:
+            fude: Fude object
+
+        Returns:
+            float: Area in coordinate units squared (m² for plane rectangular CRS)
+        """
+        surface = self.data.surfaces.get(fude.shape_ref)
+        if not surface:
+            return 0.0
+
+        exterior_points = self._collect_ring_points(surface.exterior_curve_refs)
+        area = _shoelace_area(exterior_points)
+
+        for interior_refs in surface.interior_curve_refs:
+            interior_points = self._collect_ring_points(interior_refs)
+            area -= _shoelace_area(interior_points)
+
+        return max(area, 0.0)
+
     def clear_cache(self):
         """Clear the geometry cache."""
         self._geometry_cache.clear()
+
+
+def _shoelace_area(points: List[Tuple[float, float]]) -> float:
+    """Compute polygon area using the shoelace formula. Returns absolute area."""
+    n = len(points)
+    if n < 3:
+        return 0.0
+    area = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        area += points[i][0] * points[j][1]
+        area -= points[j][0] * points[i][1]
+    return abs(area) / 2.0
 
 
 def build_all_fude_geometries(xml_data: XmlMapData,

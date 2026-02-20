@@ -184,11 +184,10 @@ class XmlImporter:
 
             fude_records = []
             for fude in xml_data.fude_list:
-                geom = builder.build_fude_polygon(fude)
-                geom_wkt = geom.asWkt() if not geom.isEmpty() else ''
-
-                # Calculate area if geometry exists
-                area_sqm = geom.area() if not geom.isEmpty() else 0.0
+                # QgsGeometry/GEOSオブジェクトをワーカースレッドで生成しないよう
+                # WKT文字列と面積は純Python（shoelace公式）で取得する
+                geom_wkt = builder.to_wkt(fude)
+                area_sqm = builder.compute_fude_area(fude) if geom_wkt else 0.0
 
                 fude_records.append(FudePolyRecord(
                     xml_meta_id=meta_id,
