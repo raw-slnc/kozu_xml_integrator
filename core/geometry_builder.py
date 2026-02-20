@@ -15,11 +15,7 @@ from typing import List, Tuple, Dict, Optional
 from qgis.core import (
     QgsGeometry,
     QgsPointXY,
-    QgsPolygon,
-    QgsLineString,
-    QgsMultiPolygon,
     QgsRectangle,
-    QgsPoint,
 )
 import logging
 
@@ -46,7 +42,10 @@ class GeometryBuilder:
         """
         self.data = xml_data
         self.swap_xy = swap_xy
-        self._geometry_cache: Dict[str, QgsGeometry] = {}
+        # WKT文字列をキャッシュする（QgsGeometryをキャッシュするとワーカースレッドで
+        # GEOSオブジェクトが蓄積され、Python GC による一括回収時にWindowsで
+        # アクセス違反が発生するため）
+        self._geometry_cache: Dict[str, str] = {}
 
     def build_fude_polygon(self, fude: Fude) -> QgsGeometry:
         """
@@ -58,58 +57,60 @@ class GeometryBuilder:
         Returns:
             QgsGeometry: Polygon geometry, or empty geometry if build fails
         """
-        # Check cache first
-        if fude.shape_ref in self._geometry_cache:
-            return self._geometry_cache[fude.shape_ref]
+        wkt = self._get_or_build_wkt(fude.shape_ref)
+        if wkt:
+            return QgsGeometry.fromWkt(wkt)
+        return QgsGeometry()
 
-        surface = self.data.surfaces.get(fude.shape_ref)
+    def _get_or_build_wkt(self, shape_ref: str) -> str:
+        """WKTキャッシュから取得、なければ構築してキャッシュする。"""
+        if shape_ref in self._geometry_cache:
+            return self._geometry_cache[shape_ref]
+
+        surface = self.data.surfaces.get(shape_ref)
         if not surface:
-            logger.warning(f"Surface not found for fude {fude.id}: {fude.shape_ref}")
-            return QgsGeometry()
+            self._geometry_cache[shape_ref] = ''
+            return ''
 
-        # Build polygon from surface
-        geom = self._build_surface_geometry(surface)
-        self._geometry_cache[fude.shape_ref] = geom
+        wkt = self._build_surface_geometry(surface)
+        self._geometry_cache[shape_ref] = wkt
+        return wkt
 
-        return geom
-
-    def _build_surface_geometry(self, surface: GmSurface) -> QgsGeometry:
+    def _build_surface_geometry(self, surface: GmSurface) -> str:
         """
-        Build polygon geometry from GM_Surface.
+        Build WKT polygon string from GM_Surface.
+
+        QgsPolygon/QgsLineString/QgsPoint を使わず純Pythonで WKT 文字列を構築する。
+        ワーカースレッドで GEOS バックの C++ オブジェクトを生成・蓄積すると、
+        Python GC による一括回収時に Windows でアクセス違反が発生するため。
 
         Args:
             surface: GmSurface object
 
         Returns:
-            QgsGeometry: Polygon geometry
+            str: WKT polygon string, or empty string if build fails
         """
-        # Build exterior ring
         exterior_points = self._collect_ring_points(surface.exterior_curve_refs)
         if len(exterior_points) < 3:
             logger.warning(f"Insufficient exterior points for surface {surface.id}")
-            return QgsGeometry()
+            return ''
 
-        # Ensure ring is closed
         if exterior_points[0] != exterior_points[-1]:
             exterior_points.append(exterior_points[0])
 
-        # Create QgsPolygon
-        polygon = QgsPolygon()
+        def ring_to_wkt(pts: List[Tuple[float, float]]) -> str:
+            return '(' + ', '.join(f'{x} {y}' for x, y in pts) + ')'
 
-        # Create exterior ring
-        exterior_ring = QgsLineString([QgsPoint(x, y) for x, y in exterior_points])
-        polygon.setExteriorRing(exterior_ring)
+        rings_wkt = ring_to_wkt(exterior_points)
 
-        # Add interior rings (holes) if any
         for interior_refs in surface.interior_curve_refs:
             interior_points = self._collect_ring_points(interior_refs)
             if len(interior_points) >= 3:
                 if interior_points[0] != interior_points[-1]:
                     interior_points.append(interior_points[0])
-                interior_ring = QgsLineString([QgsPoint(x, y) for x, y in interior_points])
-                polygon.addInteriorRing(interior_ring)
+                rings_wkt += ', ' + ring_to_wkt(interior_points)
 
-        return QgsGeometry(polygon)
+        return f'POLYGON({rings_wkt})'
 
     def _collect_ring_points(self, curve_refs: List[str]) -> List[Tuple[float, float]]:
         """
@@ -306,8 +307,7 @@ class GeometryBuilder:
         Returns:
             WKT string
         """
-        geom = self.build_fude_polygon(fude)
-        return geom.asWkt() if not geom.isEmpty() else ''
+        return self._get_or_build_wkt(fude.shape_ref)
 
     def clear_cache(self):
         """Clear the geometry cache."""
