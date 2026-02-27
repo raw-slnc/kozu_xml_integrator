@@ -203,8 +203,16 @@ class KozuXmlIntegrator:
             )
             self.main_window.destroyed.connect(self._on_main_window_destroyed)
 
-        # Show/raise the main window (works even if closed but not destroyed)
-        self.main_window.show()
+            # 初回起動時: QGISウィンドウと同じモニターの中央に配置
+            self.main_window.show()
+            qgis_geom = self.iface.mainWindow().frameGeometry()
+            self.main_window.move(
+                qgis_geom.x() + (qgis_geom.width()  - self.main_window.width())  // 2,
+                qgis_geom.y() + (qgis_geom.height() - self.main_window.height()) // 2
+            )
+        else:
+            self.main_window.show()
+
         self.main_window.raise_()
         self.main_window.activateWindow()
         self.pluginIsActive = True
