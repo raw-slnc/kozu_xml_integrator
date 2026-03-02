@@ -22,6 +22,7 @@ repository=https://github.com/raw-slnc/kozu_xml_integrator
 
 hasProcessingProvider=no
 changelog=
+    0.1.3 - Add chiban matching feature across XML files in the list
     0.1.2 - Fix Windows crash (xmlDictFree) at QThread startup: replace lxml with stdlib xml.etree.ElementTree, add gc.collect() before thread start
     0.1.1 - Fix Windows crash from batch QgsGeometry GC: replace geometry cache with WKT strings, use pure-Python shoelace formula for area calculation
 

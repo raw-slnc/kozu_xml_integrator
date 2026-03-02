@@ -403,6 +403,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self.chkShowChiban.stateChanged.connect(self._update_labels)
         self.chkShowEstArea.stateChanged.connect(self._update_labels)
 
+        # XML search
+        self.lineEditXmlSearch.returnPressed.connect(self._on_xml_search)
+        self.btnXmlSearch.clicked.connect(self._on_xml_search)
+
         # Scale override checkboxes (mutual exclusivity within each group)
         self.chkScale5000to1000.stateChanged.connect(
             lambda state: self._on_scale_override_changed(state, 5000, 1000, self.chkScale5000to500))
@@ -775,6 +779,129 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         self._load_xml_preview(xml_meta_id, map_name)
 
+    def _on_xml_search(self):
+        """Search for 地番 within XML files in the tree and display the matching XML in preview."""
+        query = self.lineEditXmlSearch.text().strip()
+        if not query or not self.db:
+            return
+
+        # Collect xml_meta_ids currently shown in the tree
+        root = self.treeXmlFiles.invisibleRootItem()
+        tree_items = {}  # xml_meta_id -> QTreeWidgetItem
+        for i in range(root.childCount()):
+            item = root.child(i)
+            xml_id = item.data(0, Qt.UserRole)
+            if xml_id is not None:
+                tree_items[xml_id] = item
+
+        if not tree_items:
+            self.statusBar.showMessage('XMLファイルが読み込まれていません', 3000)
+            return
+
+        # Search DB for matching 地番 within the listed XMLs (geometry not fetched here;
+        # preview_layer may have translated coordinates after tile alignment)
+        placeholders = ','.join('?' * len(tree_items))
+        found_xml_id = None
+        try:
+            with self.db.connection() as conn:
+                cursor = conn.execute(
+                    f"""SELECT xml_meta_id
+                        FROM t_fude_poly
+                        WHERE chiban LIKE ? AND xml_meta_id IN ({placeholders})
+                        LIMIT 1""",
+                    [f'%{query}%'] + list(tree_items.keys())
+                )
+                row = cursor.fetchone()
+        except Exception as e:
+            logger.error(f"XML chiban search error: {e}")
+            return
+
+        if not row:
+            self.statusBar.showMessage(f'地番「{query}」が見つかりません', 3000)
+            return
+
+        found_xml_id = row[0]
+
+        # Select the matching tree item (triggers _on_xml_selected → loads/translates preview)
+        if found_xml_id in tree_items:
+            self.treeXmlFiles.setCurrentItem(tree_items[found_xml_id])
+
+        # Get parcel position from preview_layer AFTER it has been loaded (and possibly
+        # translated/georeferenced). This ensures we use the canvas-aligned coordinates,
+        # not the raw DB coordinates that may differ when a tile background is active.
+        parcel_centroid = None
+        parcel_extent = None
+        query_lower = query.lower()
+        if self.preview_layer:
+            for feat in self.preview_layer.getFeatures():
+                if query_lower in (feat['chiban'] or '').lower():
+                    geom = feat.geometry()
+                    if geom and not geom.isNull():
+                        parcel_centroid = geom.centroid().asPoint()
+                        parcel_extent = geom.boundingBox()
+                        break
+
+        # Zoom to the matched parcel at 75% of canvas (only when geometry is available)
+        if parcel_extent:
+            self._zoom_to_75_percent(centroid=parcel_centroid, focus_extent=parcel_extent)
+
+    def _zoom_to_75_percent(
+        self,
+        centroid: Optional[QgsPointXY] = None,
+        focus_extent: Optional[QgsRectangle] = None,
+    ):
+        """Center preview canvas on centroid and fit focus_extent within 75% of canvas area.
+
+        Args:
+            centroid: Map point to place at canvas center. Defaults to focus_extent center.
+            focus_extent: The extent to fit at 75%. Defaults to full preview layer extent.
+        """
+        if not self.preview_layer or not self.preview_layer.featureCount():
+            return
+
+        data_extent = (
+            focus_extent
+            if (focus_extent and not focus_extent.isEmpty())
+            else self.preview_layer.extent()
+        )
+        if data_extent.isEmpty():
+            return
+
+        if centroid is None:
+            centroid = data_extent.center()
+
+        canvas_w = self.map_canvas.width()
+        canvas_h = self.map_canvas.height()
+        if canvas_w <= 0 or canvas_h <= 0:
+            data_extent.scale(4 / 3)
+            self.map_canvas.setExtent(data_extent)
+            self.map_canvas.refresh()
+            return
+
+        canvas_aspect = canvas_w / canvas_h
+        data_w = data_extent.width()
+        data_h = data_extent.height() if data_extent.height() > 0 else data_w
+
+        if data_w / data_h >= canvas_aspect:
+            visible_w = data_w / 0.75
+            visible_h = visible_w / canvas_aspect
+        else:
+            visible_h = data_h / 0.75
+            visible_w = visible_h * canvas_aspect
+
+        new_extent = QgsRectangle(
+            centroid.x() - visible_w / 2,
+            centroid.y() - visible_h / 2,
+            centroid.x() + visible_w / 2,
+            centroid.y() + visible_h / 2,
+        )
+
+        # Do NOT update _full_extent / _max_zoom_out_scale here.
+        # The zoom-out limit stays at the full XML extent (set by _update_zoom_limit),
+        # so the user can freely zoom out after the search result is shown.
+        self.map_canvas.setExtent(new_extent)
+        self.map_canvas.refresh()
+
     def _load_xml_preview(self, xml_meta_id: int, map_name: str = ''):
         """Load parcels from a specific XML into the map canvas."""
         if not self.db:
@@ -905,9 +1032,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
             self.map_canvas.refresh()
 
-            # If main select is active, re-zoom to oaza for new XML
-            if self.chkEnableMainSelect.isChecked():
-                self._zoom_main_to_oaza()
+            # Always update chiban range status label; also do oaza sync if main select is active
+            self._zoom_main_to_oaza()
 
         except Exception as e:
             logger.error(f"Failed to load preview for xml_meta_id={xml_meta_id}: {e}")
@@ -1552,8 +1678,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._zoom_main_to_oaza()
 
     def _zoom_main_to_oaza(self):
-        """Zoom main canvas to lot features matching the XML's parent numbers within the oaza."""
-        if not self.preview_layer or not self._link_config:
+        """Update lblLinkStatus with the chiban range of the current preview XML."""
+        if not self.preview_layer:
             return
 
         # Collect oaza name and parent number set from preview features
@@ -1580,6 +1706,68 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         oaza_list = ', '.join(sorted(oaza_names))
         self.lblLinkStatus.setText(f"{oaza_list} / {range_str}")
+
+    def _try_cross_xml_and_retry(
+        self, tgt_parent: str, tgt_branch: str, enabled_levels: set, point: QgsPointXY
+    ):
+        """Search other XMLs in the tree for a matching 地番, switch to it, then retry."""
+        if not self.db:
+            return
+
+        root = self.treeXmlFiles.invisibleRootItem()
+        current_xml_id = self._current_xml_meta_id
+        tree_xml_items: dict = {}
+        for i in range(root.childCount()):
+            item = root.child(i)
+            xml_id = item.data(0, Qt.UserRole)
+            if xml_id is not None and xml_id != current_xml_id:
+                tree_xml_items[xml_id] = item
+
+        if not tree_xml_items:
+            return
+
+        # Query all chiban from the other XMLs in the tree
+        placeholders = ','.join('?' * len(tree_xml_items))
+        try:
+            with self.db.connection() as conn:
+                cursor = conn.execute(
+                    f"""SELECT xml_meta_id, chiban FROM t_fude_poly
+                        WHERE xml_meta_id IN ({placeholders})
+                          AND chiban IS NOT NULL AND chiban != ''""",
+                    list(tree_xml_items.keys())
+                )
+                rows = cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Cross-XML chiban search error: {e}")
+            return
+
+        # Pick the XML with the best matching 地番
+        match_priority = {'exact': 0, 'parent': 1, 'near': 2}
+        best_xml_id = None
+        best_level = None
+        for xml_id, chiban in rows:
+            src_parent, src_branch = self._parse_chiban(chiban)
+            level = self._match_level(src_parent, src_branch, tgt_parent, tgt_branch)
+            if level and level in enabled_levels:
+                if best_level is None or match_priority[level] < match_priority.get(best_level, 99):
+                    best_level = level
+                    best_xml_id = xml_id
+                    if best_level == 'exact':
+                        break
+
+        if best_xml_id is None:
+            return
+
+        # Switch to the matching XML (triggers _on_xml_selected → loads preview)
+        if best_xml_id in tree_xml_items:
+            self.treeXmlFiles.setCurrentItem(tree_xml_items[best_xml_id])
+
+        # Retry with the new preview layer; guard prevents a second cross-XML search
+        self._cross_xml_searching = True
+        try:
+            self._on_main_clicked(point)
+        finally:
+            self._cross_xml_searching = False
 
     def _on_main_clicked(self, point: QgsPointXY):
         """Handle click on main canvas: find feature and highlight matches in preview."""
@@ -1636,6 +1824,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                     best_feat_id = preview_feat.id()
 
         if not matched_ids:
+            # Cross-XML fallback: search other XMLs in the tree (once, no recursion)
+            if not getattr(self, '_cross_xml_searching', False):
+                self._try_cross_xml_and_retry(tgt_parent, tgt_branch, enabled_levels, point)
             return
 
         # Step 2: Translate preview geometries to align with main (BEFORE creating highlights)
