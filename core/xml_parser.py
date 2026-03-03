@@ -2,8 +2,8 @@
 """
 XML Parser for Legal Cadastral Map (法務局地図XML)
 
-This module parses cadastral map files using defusedxml.ElementTree
-（stdlib xml.etree.ElementTree の安全なラッパー）。
+This module parses cadastral map files using xml.etree.ElementTree
+（型ヒント・クラス参照）と defusedxml.ElementTree.parse（安全なパース）を併用する。
 lxml は Windows の QThread 起動時に xmlDictFree クラッシュを引き起こすため
 使用しない（lxml の Cython ジェネレータが PyGen_Finalize 経由で GC される問題）。
 
@@ -16,7 +16,8 @@ XML Structure:
 from typing import Dict, List, Tuple, Optional, Generator, Any
 from dataclasses import dataclass, field
 from pathlib import Path
-import defusedxml.ElementTree as ET
+import xml.etree.ElementTree as ET
+from defusedxml.ElementTree import parse as _safe_parse
 import logging
 
 logger = logging.getLogger(__name__)
@@ -144,7 +145,7 @@ class KozuXmlParser:
         # Windows の QThread 起動時（PyGILState_Release）にアクセス違反になる。
         # → stdlib xml.etree.ElementTree を使用し lxml を完全に排除する。
         with open(self.xml_path, 'rb') as f:
-            tree = ET.parse(f)
+            tree = _safe_parse(f)  # nosec B314
         root = tree.getroot()
 
         header = self._parse_header(root)
