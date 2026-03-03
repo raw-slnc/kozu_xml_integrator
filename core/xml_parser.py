@@ -2,7 +2,8 @@
 """
 XML Parser for Legal Cadastral Map (法務局地図XML)
 
-This module parses cadastral map files using the stdlib xml.etree.ElementTree.
+This module parses cadastral map files using defusedxml.ElementTree
+（stdlib xml.etree.ElementTree の安全なラッパー）。
 lxml は Windows の QThread 起動時に xmlDictFree クラッシュを引き起こすため
 使用しない（lxml の Cython ジェネレータが PyGen_Finalize 経由で GC される問題）。
 
@@ -15,7 +16,7 @@ XML Structure:
 from typing import Dict, List, Tuple, Optional, Generator, Any
 from dataclasses import dataclass, field
 from pathlib import Path
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 import logging
 
 logger = logging.getLogger(__name__)

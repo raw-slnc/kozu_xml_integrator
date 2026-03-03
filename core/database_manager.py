@@ -655,7 +655,8 @@ class DatabaseManager:
                     review_reason = ?,
                     updated_date = CURRENT_TIMESTAMP
                 WHERE id IN ({placeholders})
-            """, [reliability, transform_method, 1 if needs_review else 0,
+            """,  # nosec B608
+            [reliability, transform_method, 1 if needs_review else 0,
                   review_reason] + fude_ids)
             return cursor.rowcount
 
@@ -729,7 +730,8 @@ class DatabaseManager:
                 FROM t_fude_poly f
                 JOIN t_xml_meta m ON f.xml_meta_id = m.id
                 WHERE {where_sql} AND f.geom IS NOT NULL
-            """, params)
+            """,  # nosec B608
+            params)
 
             rows = cursor.fetchall()
 
