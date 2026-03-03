@@ -138,6 +138,7 @@ class KozuXmlIntegrator:
         action = QAction(icon, text, parent)
         action.triggered.connect(callback)
         action.setEnabled(enabled_flag)
+        action.setToolTip(text)
 
         if status_tip is not None:
             action.setStatusTip(status_tip)
