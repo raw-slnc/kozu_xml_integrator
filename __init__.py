@@ -24,6 +24,14 @@
 """
 
 
+import sys
+import os
+# Add plugin directory to sys.path so bundled packages (e.g. defusedxml) are importable
+_plugin_dir = os.path.dirname(os.path.abspath(__file__))
+if _plugin_dir not in sys.path:
+    sys.path.insert(0, _plugin_dir)
+
+
 # noinspection PyPep8Naming
 def classFactory(iface):  # pylint: disable=invalid-name
     """Load KozuXmlIntegrator class from file KozuXmlIntegrator.
