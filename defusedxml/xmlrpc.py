@@ -15,15 +15,15 @@ from .common import DTDForbidden, EntitiesForbidden, ExternalReferenceForbidden,
 
 if PY3:
     __origin__ = "xmlrpc.client"
-    from xmlrpc.client import ExpatParser
-    from xmlrpc import client as xmlrpc_client
-    from xmlrpc import server as xmlrpc_server
-    from xmlrpc.client import gzip_decode as _orig_gzip_decode
-    from xmlrpc.client import GzipDecodedResponse as _OrigGzipDecodedResponse
+    from xmlrpc.client import ExpatParser  # nosec B411
+    from xmlrpc import client as xmlrpc_client  # nosec B411
+    from xmlrpc import server as xmlrpc_server  # nosec B411
+    from xmlrpc.client import gzip_decode as _orig_gzip_decode  # nosec B411
+    from xmlrpc.client import GzipDecodedResponse as _OrigGzipDecodedResponse  # nosec B411
 else:
     __origin__ = "xmlrpclib"
-    from xmlrpclib import ExpatParser
-    import xmlrpclib as xmlrpc_client
+    from xmlrpclib import ExpatParser  # nosec B411
+    import xmlrpclib as xmlrpc_client  # nosec B411
 
     xmlrpc_server = None
     from xmlrpclib import gzip_decode as _orig_gzip_decode

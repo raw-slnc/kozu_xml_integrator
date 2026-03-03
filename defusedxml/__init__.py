@@ -34,7 +34,7 @@ def defuse_stdlib():
     from . import sax
     from . import expatbuilder
     from . import expatreader
-    from . import xmlrpc
+    from . import xmlrpc  # nosec B411
 
     xmlrpc.monkey_patch()
     defused[xmlrpc] = None
