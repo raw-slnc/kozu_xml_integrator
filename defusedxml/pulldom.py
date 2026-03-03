@@ -27,7 +27,7 @@ def parse(
         parser.forbid_dtd = forbid_dtd
         parser.forbid_entities = forbid_entities
         parser.forbid_external = forbid_external
-    return _parse(stream_or_string, parser, bufsize)  # nosec B321
+    return _parse(stream_or_string, parser, bufsize)
 
 
 def parseString(
@@ -38,4 +38,4 @@ def parseString(
         parser.forbid_dtd = forbid_dtd
         parser.forbid_entities = forbid_entities
         parser.forbid_external = forbid_external
-    return _parseString(string, parser)  # nosec B321
+    return _parseString(string, parser)

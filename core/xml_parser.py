@@ -145,7 +145,7 @@ class KozuXmlParser:
         # Windows の QThread 起動時（PyGILState_Release）にアクセス違反になる。
         # → stdlib xml.etree.ElementTree を使用し lxml を完全に排除する。
         with open(self.xml_path, 'rb') as f:
-            tree = _safe_parse(f)  # nosec B314
+            tree = _safe_parse(f)
         root = tree.getroot()
 
         header = self._parse_header(root)
