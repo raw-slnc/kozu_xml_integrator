@@ -55,6 +55,12 @@ XMLファイルに含まれる大字と森林計画図の大字を照らし合�
    - macOS: `~/Library/Application Support/QGIS/QGIS3/profiles/default/python/plugins/`
 3. Restart QGIS and enable the plugin in the Plugin Manager / QGISを再起動し、プラグインマネージャから有効化
 
+## Support / サポート
+
+If this plugin is helpful for your work, you can support the development here:
+開発を応援していただけると嬉しいです:
+https://paypal.me/rawslnc
+
 ## License / ライセンス
 
 GPL-2.0-or-later

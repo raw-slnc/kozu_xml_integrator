@@ -12,7 +12,7 @@ version=0.1.7
 author=Hideharu Masai
 email=hideharumasai@void.mints.ne.jp
 
-about=A QGIS plugin that cross-references Japanese Legal Affairs Bureau cadastral map XML (Kozu) with forest planning maps and parcel information, applies minor positional adjustments, and provides support for survey investigations. It does not perform automatic boundary determination; it is intended for area determination for on-site boundary verification. / 公図XML整合ツール — 法務局地図XML（公図）を森林計画図の地番情報と照合し、位置の微調整を行い照合する調査のサポートを提供します。境界の自動確定は行わず、現地立会いのための区域確定を目的とします。
+about=A QGIS plugin that cross-references Japanese Legal Affairs Bureau cadastral map XML (Kozu) with forest planning maps and parcel information, applies minor positional adjustments, and provides support for survey investigations. It does not perform automatic boundary determination; it is intended for area determination for on-site boundary verification. / 公図XML整合ツール — 法務局地図XML（公図）を森林計画図の地番情報と照合し、位置の微調整を行い照合する調査のサポートを提供します。境界の自動確定は行わず、現地立会いのための区域確定を目的とします。 / Support: https://paypal.me/rawslnc
 
 tracker=https://github.com/raw-slnc/kozu_xml_integrator/issues
 repository=https://github.com/raw-slnc/kozu_xml_integrator
