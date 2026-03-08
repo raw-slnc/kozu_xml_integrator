@@ -58,7 +58,7 @@ XMLファイルに含まれる大字と森林計画図の大字を照らし合�
 ## Support / サポート
 
 If this plugin is helpful for your work, you can support the development here:
-開発を応援していただけると嬉しいです:
+開発を応援していただけると嬉しいです。
 https://paypal.me/rawslnc
 
 ## License / ライセンス
