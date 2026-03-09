@@ -17,7 +17,7 @@ from typing import Dict, List, Tuple, Optional, Generator, Any
 from dataclasses import dataclass, field
 from pathlib import Path
 import xml.etree.ElementTree as ET
-from defusedxml.ElementTree import parse as _safe_parse
+from ..defusedxml.ElementTree import parse as _safe_parse
 import logging
 
 logger = logging.getLogger(__name__)
