@@ -8,7 +8,7 @@
 name=Kozu XML Integrator
 qgisMinimumVersion=3.40
 description=Cross-references cadastral XML (Kozu) with forest planning maps for on-site boundary survey support.
-version=0.1.7
+version=0.1.8
 author=Hideharu Masai
 email=hideharumasai@void.mints.ne.jp
 
@@ -22,6 +22,7 @@ repository=https://github.com/raw-slnc/kozu_xml_integrator
 
 hasProcessingProvider=no
 changelog=
+    0.1.8 - Fix plugin load failure on Windows (ImportError: attempted relative import with no known parent package)
     0.1.7 - Fix toolbar icon not displaying correctly
     0.1.6 - Internal code cleanup; no functional changes
     0.1.5 - Minor fixes
