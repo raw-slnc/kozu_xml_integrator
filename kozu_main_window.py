@@ -28,7 +28,8 @@ from qgis.core import (
     QgsFillSymbol, QgsFeatureRequest, QgsRectangle,
     QgsPalLayerSettings, QgsTextFormat, QgsTextBufferSettings,
     QgsVectorLayerSimpleLabeling,
-    QgsMapSettings, QgsMapRendererCustomPainterJob
+    QgsMapSettings, QgsMapRendererCustomPainterJob,
+    QgsUnitTypes
 )
 from qgis.gui import QgsMapCanvas, QgsMapTool, QgsMapToolEmitPoint, QgsHighlight, QgsVertexMarker
 
@@ -303,7 +304,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._link_config: Optional[dict] = None
         self._highlights: list = []  # QgsHighlight on preview canvas
         self._main_highlights: list = []  # QgsHighlight on main canvas
-        self._matched_preview_fids: set = set()  # Accumulated matched preview feature IDs for export
+        self._matched_preview_fids: dict = {}  # Accumulated matched preview feature IDs → level for export
+        self._export_chiban_hint: str = ''    # BehaviorA: clicked 公図 chiban (use as-is for naming)
         self._prev_main_tool = None  # Saved main canvas tool
         self._main_select_tool: Optional[MainSelectTool] = None
         self._preview_tool: Optional[PreviewClickTool] = None
@@ -416,6 +418,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             lambda state: self._on_scale_override_changed(state, 3000, 1200, self.chkScale3000to600))
         self.chkScale3000to600.stateChanged.connect(
             lambda state: self._on_scale_override_changed(state, 3000, 600, self.chkScale3000to1200))
+        self.chkScale2000to1000.stateChanged.connect(
+            lambda state: self._on_scale_override_changed(state, 2000, 1000, None))
 
         self.btnLinkSettings.clicked.connect(self._on_link_settings)
         self.btnLinkClear.clicked.connect(self._on_link_clear)
@@ -705,6 +709,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         """Handle oaza selection: populate XML file list."""
         self._clear_highlights()
         self._matched_preview_fids.clear()
+        self._export_chiban_hint = ''
         self.treeXmlFiles.clear()
         self._current_xml_meta_id = None
 
@@ -927,6 +932,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             # Clear highlights and matched feature tracking from previous selection
             self._clear_highlights()
             self._matched_preview_fids.clear()
+            self._export_chiban_hint = ''
 
             # Remove old preview layer
             if self.preview_layer:
@@ -1032,6 +1038,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
             self.map_canvas.refresh()
 
+            # Pan main canvas to preview center (public coord only)
+            if has_public and features:
+                self._pan_main_to_preview_center()
+
             # Always update chiban range status label; also do oaza sync if main select is active
             self._zoom_main_to_oaza()
 
@@ -1089,11 +1099,13 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         """Enable/disable scale override checkboxes based on original scale."""
         is_5000 = self._original_scale == 5000
         is_3000 = self._original_scale == 3000
+        is_2000 = self._original_scale == 2000
 
         self.chkScale5000to1000.setEnabled(is_5000)
         self.chkScale5000to500.setEnabled(is_5000)
         self.chkScale3000to1200.setEnabled(is_3000)
         self.chkScale3000to600.setEnabled(is_3000)
+        self.chkScale2000to1000.setEnabled(is_2000)
 
         # Uncheck options for non-matching groups
         if not is_5000:
@@ -1110,6 +1122,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             self.chkScale3000to600.setChecked(False)
             self.chkScale3000to1200.blockSignals(False)
             self.chkScale3000to600.blockSignals(False)
+        if not is_2000:
+            self.chkScale2000to1000.blockSignals(True)
+            self.chkScale2000to1000.setChecked(False)
+            self.chkScale2000to1000.blockSignals(False)
 
     def _apply_scale_override(self):
         """Apply active scale override to _current_scale."""
@@ -1127,13 +1143,15 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 self._current_scale = 600
             else:
                 self._current_scale = self._original_scale
+        elif self._original_scale == 2000:
+            self._current_scale = 1000 if self.chkScale2000to1000.isChecked() else self._original_scale
         else:
             self._current_scale = self._original_scale
 
     def _on_scale_override_changed(self, state, source_scale, target_scale, sibling_chk):
         """Handle scale override checkbox toggle with mutual exclusivity."""
         # Mutual exclusivity: uncheck sibling when checking this one
-        if state == Qt.Checked and sibling_chk.isChecked():
+        if state == Qt.Checked and sibling_chk is not None and sibling_chk.isChecked():
             sibling_chk.blockSignals(True)
             sibling_chk.setChecked(False)
             sibling_chk.blockSignals(False)
@@ -1497,6 +1515,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         self._clear_highlights()
         self._matched_preview_fids.clear()
+        self._export_chiban_hint = ''
 
         # Find clicked feature in preview layer
         feat = self._find_feature_at_point(self.preview_layer, point, self.map_canvas)
@@ -1570,7 +1589,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         # Track clicked preview feature as matched (if match found in main)
         if self._main_highlights:
-            self._matched_preview_fids.add(feat.id())
+            self._matched_preview_fids[feat.id()] = best_level
+            self._export_chiban_hint = src_chiban  # BehaviorA: use clicked 公図 chiban as-is
             self._update_export_gpkg_state()
 
         if best_lot_feat:
@@ -1639,7 +1659,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                     )
                     self._highlights.append(h)
                     # Track reverse-matched preview features for export
-                    self._matched_preview_fids.add(pf.id())
+                    self._matched_preview_fids[pf.id()] = display_level
 
             self._update_export_gpkg_state()
 
@@ -1676,6 +1696,26 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         # Zoom main window to oaza extent and show chiban range
         self._zoom_main_to_oaza()
+
+    def _pan_main_to_preview_center(self):
+        """Pan the main QGIS canvas to the center of the preview layer (public coord only)."""
+        if not self.preview_layer or self._is_arbitrary:
+            return
+        preview_center = self.preview_layer.extent().center()
+        src_crs = QgsCoordinateReferenceSystem("EPSG:6676")
+        main_canvas = self.iface.mapCanvas()
+        dst_crs = main_canvas.mapSettings().destinationCrs()
+        if src_crs != dst_crs:
+            transform = QgsCoordinateTransform(src_crs, dst_crs, QgsProject.instance())
+            preview_center = transform.transform(preview_center)
+        me = main_canvas.extent()
+        hw = me.width() / 2
+        hh = me.height() / 2
+        main_canvas.setExtent(QgsRectangle(
+            preview_center.x() - hw, preview_center.y() - hh,
+            preview_center.x() + hw, preview_center.y() + hh
+        ))
+        main_canvas.refresh()
 
     def _zoom_main_to_oaza(self):
         """Update lblLinkStatus with the chiban range of the current preview XML."""
@@ -1776,6 +1816,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         self._clear_highlights()
         self._matched_preview_fids.clear()
+        self._export_chiban_hint = ''
 
         _, lot_layer = self._get_link_layers()
         if not lot_layer:
@@ -1854,7 +1895,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             )
             self._highlights.append(h)
             # Track matched preview features for export
-            self._matched_preview_fids.add(fid)
+            self._matched_preview_fids[fid] = level
             combined_extent.combineExtentWith(pf.geometry().boundingBox())
             if fid == best_feat_id:
                 best_feat = pf
@@ -2538,10 +2579,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
     # ─── GPKG Export ────────────────────────────────────────
 
     def _update_export_gpkg_state(self):
-        """Enable/disable GPKG export button based on matched features."""
+        """Enable/disable GPKG export button based on preview state."""
         enabled = (
             self.preview_layer is not None
-            and len(self._matched_preview_fids) > 0
+            and self.preview_layer.featureCount() > 0
             and not self._is_arbitrary
         )
         self.btnExportGpkg.setEnabled(enabled)
@@ -2555,20 +2596,15 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             )
             return
 
-        if not self._matched_preview_fids:
-            QMessageBox.warning(
-                self, "エクスポート",
-                "照合済みの地物がありません。\n照合を行ってからエクスポートしてください。"
-            )
-            return
-
         oaza_name = self.comboOaza.currentText()
         if oaza_name == "（大字を選択）":
             oaza_name = "export"
 
+        export_name = self._build_export_name(oaza_name)
+
         save_path, _ = QFileDialog.getSaveFileName(
             self, "GeoPackageエクスポート",
-            str(Path.home() / f"{oaza_name}.gpkg"),
+            str(Path.home() / f"{export_name}.gpkg"),
             "GeoPackage (*.gpkg)"
         )
         if not save_path:
@@ -2576,9 +2612,12 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         try:
             count = self._write_gpkg(save_path)
+            has_match = bool(self._matched_preview_fids)
+            label = "照合済み" if has_match else "公共座標系"
+            self._load_gpkg_to_project(save_path, export_name)
             QMessageBox.information(
                 self, "エクスポート",
-                f"照合済み {count} 筆をGeoPackageに出力しました:\n{save_path}"
+                f"{label} {count} 筆をGeoPackageに出力しました:\n{save_path}"
             )
         except Exception as e:
             logger.error(f"GPKG export failed: {e}")
@@ -2587,10 +2626,72 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 f"エクスポート中にエラーが発生しました:\n{e}"
             )
 
-    def _write_gpkg(self, path: str) -> int:
-        """Write matched preview features to a GeoPackage file.
+    def _build_export_name(self, oaza_name: str) -> str:
+        """Build export filename with chiban info from matched features.
 
-        Only exports features that have been matched through 照合 operations.
+        BehaviorA (公図クリック、相互表示含む):
+          _export_chiban_hint に保持したクリック地番をそのまま使用。
+        BehaviorB (地図上で選択する):
+          マッチした公図地番から最若番を選び、複数あれば「最若番他」。
+        照合なし（全公図エクスポート）:
+          oaza_name のみ。
+        """
+        if not self._matched_preview_fids or not self.preview_layer:
+            return oaza_name
+
+        # BehaviorA: use the directly-clicked 公図 chiban as-is
+        if self._export_chiban_hint:
+            return f"{oaza_name}_{self._export_chiban_hint}"
+
+        # BehaviorB: derive from all matched 公図 features
+        rows = []  # (parent_int, branch_int, original_chiban)
+        for feat in self.preview_layer.getFeatures():
+            if feat.id() not in self._matched_preview_fids:
+                continue
+            chiban = str(feat['chiban'] or '')
+            parent, branch = self._parse_chiban(chiban)
+            p = int(parent) if parent.isdigit() else 999999
+            b = int(branch) if branch.isdigit() else -1
+            rows.append((p, b, chiban))
+
+        if not rows:
+            return oaza_name
+
+        rows.sort()
+        youngest = rows[0]
+        if len(rows) == 1:
+            return f"{oaza_name}_{youngest[2]}"
+        par, bra = self._parse_chiban(youngest[2])
+        chiban_label = f"{par}-{bra}" if bra else par
+        return f"{oaza_name}_{chiban_label}他"
+
+    def _load_gpkg_to_project(self, path: str, layer_name: str):
+        """Load exported GPKG into the current QGIS project with red outline / no fill."""
+        from qgis.core import QgsSimpleFillSymbolLayer
+        layer = QgsVectorLayer(path, layer_name, "ogr")
+        if not layer.isValid():
+            logger.warning(f"Failed to load exported GPKG: {path}")
+            return
+
+        fill_layer = QgsSimpleFillSymbolLayer()
+        fill_layer.setFillColor(QColor(0, 255, 0, 51))  # green, 20% opacity (51/255)
+        fill_layer.setStrokeColor(QColor(255, 0, 0))
+        fill_layer.setStrokeWidth(0.4)
+        fill_layer.setStrokeWidthUnit(QgsUnitTypes.RenderPoints)
+
+        symbol = QgsFillSymbol()
+        symbol.changeSymbolLayer(0, fill_layer)
+        layer.renderer().setSymbol(symbol)
+        layer.triggerRepaint()
+
+        QgsProject.instance().addMapLayer(layer)
+        logger.info(f"Loaded GPKG layer '{layer_name}' from {path}")
+
+    def _write_gpkg(self, path: str) -> int:
+        """Write preview features to a GeoPackage file.
+
+        Exports matched (照合済み) features if any; otherwise exports all features
+        in the public coordinate preview layer.
         Preserves georeferenced coordinates and adds scale information.
 
         Returns:
@@ -2614,9 +2715,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         if writer.hasError() != QgsVectorFileWriter.NoError:
             raise RuntimeError(writer.errorMessage())
 
+        export_all = not self._matched_preview_fids
         count = 0
         for feat in self.preview_layer.getFeatures():
-            if feat.id() not in self._matched_preview_fids:
+            if not export_all and feat.id() not in self._matched_preview_fids:
                 continue
             out_feat = QgsFeature()
             out_feat.setGeometry(feat.geometry())

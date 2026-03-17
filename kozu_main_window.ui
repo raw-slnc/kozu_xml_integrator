@@ -451,6 +451,16 @@
                   </property>
                  </widget>
                 </item>
+                <item row="2" column="0">
+                 <widget class="QCheckBox" name="chkScale2000to1000">
+                  <property name="text">
+                   <string>1:2000→1:1000</string>
+                  </property>
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                 </widget>
+                </item>
                </layout>
               </item>
              </layout>

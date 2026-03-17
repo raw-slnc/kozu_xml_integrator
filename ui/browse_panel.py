@@ -21,6 +21,7 @@ from qgis.core import (
     QgsVectorLayer,
     QgsProject,
     QgsCoordinateReferenceSystem,
+    QgsCoordinateTransform,
     QgsRectangle,
     QgsGeometry,
     QgsFeature,
@@ -327,11 +328,18 @@ class BrowsePanelController:
         # Get geometry from database
         geom = self._get_fude_geometry(fude_id)
         if geom and not geom.isNull():
+            canvas = iface.mapCanvas()
+
+            # Transform geometry to map canvas CRS if needed
+            src_crs = QgsCoordinateReferenceSystem("EPSG:6676")
+            dst_crs = canvas.mapSettings().destinationCrs()
+            if src_crs != dst_crs:
+                transform = QgsCoordinateTransform(src_crs, dst_crs, QgsProject.instance())
+                geom.transform(transform)
+
             # Zoom to geometry with buffer
             bbox = geom.boundingBox()
             bbox.scale(1.5)  # Add some padding
-
-            canvas = iface.mapCanvas()
 
             # Set extent first
             canvas.setExtent(bbox)
