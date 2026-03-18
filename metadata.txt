@@ -8,7 +8,7 @@
 name=Kozu XML Integrator
 qgisMinimumVersion=3.40
 description=Cross-references cadastral XML (Kozu) with forest planning maps for on-site boundary survey support.
-version=0.2.0
+version=0.2.1
 author=Hideharu Masai
 email=hideharumasai@void.mints.ne.jp
 
@@ -22,6 +22,7 @@ repository=https://github.com/raw-slnc/kozu_xml_integrator
 
 hasProcessingProvider=no
 changelog=
+    0.2.1 - Add legal notice (登記所備付地図データ利用規約) and coordinate system explanation in UI; add "Developed by Avid Tree Work" credit
     0.2.0 - Simplify import: ZIP-only selection (multiple, supports nested ZIP structure); add post-import ZIP rename with municipality name; reorganize preview tile controls into 2-column layout; fix CRS detection: dynamically resolve zone number from crs_type (supports all 19 zones); fix tile availability: determine public/arbitrary from t_xml_meta.crs_type instead of coord_type
     0.1.9 - Fix canvas sync issue when operating public coordinate system data; update toolbar icon; minor bug fixes
     0.1.8 - Fix plugin load failure on Windows (ImportError: attempted relative import with no known parent package)

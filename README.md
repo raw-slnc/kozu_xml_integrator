@@ -35,6 +35,26 @@ XMLファイルに含まれる大字と森林計画図の大字を照らし合�
 
 > 本プラグインは静岡県が公開する森林計画図オープンデータを基に開発・動作確認を行っています。プラグインの機能自体は汎用的ですが、想定する属性構造（フィールド名・地番形式等）は同データに準拠しています。他県や他のデータソースの森林計画図を使用する場合、データ構造の違いにより正常に動作しない可能性があります。ご利用前にデータ構造の整合性をご確認ください。
 
+## Data Terms / データ利用について
+
+This plugin uses 登記所備付地図データ (Legal Affairs Bureau Cadastral Map Data) published by the Ministry of Justice, Japan.
+
+- The accuracy of this data varies depending on when it was created.
+- Users must not publish or use processed/edited data in a manner that implies it was created by the national government.
+- The Ministry of Justice assumes no responsibility for any use of this data.
+- When publishing edited or processed 登記所備付地図データ, please include a source attribution such as:
+  「登記所備付地図データ ○○市」（法務省）（当該ページの URL）を加工して作成
+
+---
+
+本プラグインは「登記所備付地図データ」（法務省）を使用します。
+
+- この情報は作成時期により精度が異なります。
+- ユーザーは加工・編集したデータをあたかも国が作成したかのような態様で公表・利用するかまたは政府作成として公表・利用してはなりません。
+- このデータの利用行為について法務省は一切責任を負いません。
+- 編集・加工した「登記所備付地図データ」を公表する場合には次のような例に沿って出典を記載してください：
+  「登記所備付地図データ ○○市」（法務省）（当該ページの URL）を加工して作成
+
 ## Requirements / 動作要件
 
 - QGIS 3.40 or later (LTR) / QGIS 3.40 以降（LTR）

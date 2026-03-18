@@ -239,13 +239,44 @@
                <widget class="QLabel" name="lblImportTip">
                 <property name="text">
                  <string>【公共座標系】地籍調査済みのデータです。系番号（1〜19系）を自動判別し、背景地図との重ね合わせが可能です。
-【任意座標系】背景地図との重ね合わせはできません。</string>
+【任意座標系】そのままでは背景地図との重ね合わせはできません。</string>
                 </property>
                 <property name="wordWrap">
                  <bool>true</bool>
                 </property>
                 <property name="styleSheet">
                  <string>color: #555555; font-size: 11px;</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <!-- Data Terms Notice -->
+           <item>
+            <widget class="QGroupBox" name="groupDataTerms">
+             <property name="title">
+              <string>利用上の注意</string>
+             </property>
+             <layout class="QVBoxLayout" name="dataTermsLayout">
+              <item>
+               <widget class="QLabel" name="lblDataTerms">
+                <property name="text">
+                 <string>※本プラグインは「登記所備付地図データ」（法務省）を使用します。この情報は作成時期により精度が異なります。
+
+ユーザーは加工・編集したデータをあたかも国が作成したかのような態様で公表・利用するかまたは政府作成として公表・利用してはなりません。
+
+またこのデータの利用行為について法務省は一切責任を負いません。                 
+
+編集・加工した「登記所備付地図データ」を公表する場合には次のような例に沿って出典を記載してください。
+                 
+「登記所備付地図データ ○○市」（法務省） （当該ページの URL）を加工して作成 など</string>
+                </property>
+                <property name="wordWrap">
+                 <bool>true</bool>
+                </property>
+                <property name="styleSheet">
+                 <string>color: #444444; font-size: 10px;</string>
                 </property>
                </widget>
               </item>
