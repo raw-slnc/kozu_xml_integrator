@@ -1072,6 +1072,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             has_public = not self._is_arbitrary
             self.chkShowTile.setEnabled(has_public)
             self.comboTileSource.setEnabled(has_public and self.chkShowTile.isChecked())
+            self.chkOverlayTile.setEnabled(has_public)
+            self.comboOverlaySource.setEnabled(has_public and self.chkOverlayTile.isChecked())
+            self.spinOverlayOpacity.setEnabled(has_public)
 
             if has_public:
                 self.lblTileStatus.setText("公共座標系データ - タイル表示可能")
@@ -1082,6 +1085,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             else:
                 if not self.chkTileLock.isChecked():
                     self.chkShowTile.setChecked(False)
+                    self.chkOverlayTile.setChecked(False)
                 self.lblTileStatus.setText("任意座標系データ - タイル表示不可")
                 self._update_crs_label_with_override()
 
