@@ -16,7 +16,7 @@ from qgis.PyQt import uic
 from qgis.PyQt.QtCore import Qt, QSettings, pyqtSignal, QVariant, QPointF, QRectF, QMarginsF, QEvent
 from qgis.PyQt.QtWidgets import (
     QMainWindow, QFileDialog, QMessageBox, QTreeWidgetItem, QShortcut,
-    QApplication, QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QWidget
+    QApplication, QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QWidget,
 )
 from qgis.PyQt.QtGui import (
     QColor, QKeySequence, QPainter, QPen, QFont, QPageSize, QPageLayout
@@ -396,7 +396,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self.btnNewDb.clicked.connect(self._on_new_database)
 
         # Import tab
-        self.btnSelectXmlFolder.clicked.connect(self._on_select_xml_folder)
+        self.btnSelectXmlFolder.clicked.connect(self._on_select_xml_source)
         self.btnStartImport.clicked.connect(self._on_start_import)
 
         # Preview tab
@@ -610,13 +610,18 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
     # ─── Import Tab ─────────────────────────────────────────
 
-    def _on_select_xml_folder(self):
-        """Handle XML folder selection."""
-        folder = QFileDialog.getExistingDirectory(
-            self, "XMLフォルダを選択", str(Path.home())
+    def _on_select_xml_source(self):
+        """Open ZIP file selection dialog (multiple selection)."""
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, "ZIPファイルを選択", str(Path.home()),
+            "ZIPファイル (*.zip)"
         )
-        if folder:
-            self.lineEditXmlFolder.setText(folder)
+        if file_paths:
+            self._selected_zips = [Path(p) for p in file_paths]
+            if len(self._selected_zips) == 1:
+                self.lineEditXmlFolder.setText(file_paths[0])
+            else:
+                self.lineEditXmlFolder.setText(f"{len(self._selected_zips)}件のZIPファイル")
             self._update_ui_state()
 
     def _on_start_import(self):
@@ -627,17 +632,15 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         from .ui.import_panel import ImportWorker
         from qgis.PyQt.QtCore import QThread
 
-        xml_folder = Path(self.lineEditXmlFolder.text())
-        include_subdirs = self.chkIncludeSubdirs.isChecked()
+        zip_files = getattr(self, '_selected_zips', [])
 
         self._import_worker = ImportWorker(
-            xml_dir=xml_folder,
             db_path=self.db_path,
             municipality_layer=None,
             municipality_name_field=None,
             oaza_layer=None,
             oaza_name_field=None,
-            include_subdirs=include_subdirs
+            zip_files=zip_files or None,
         )
 
         self._import_thread = QThread()
@@ -649,6 +652,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._import_worker.error.connect(self._on_import_error)
         self._import_worker.finished.connect(self._import_thread.quit)
         self._import_worker.error.connect(self._import_thread.quit)
+
+        self._rename_zip_after_import = self.chkRenameZip.isChecked()
 
         self.btnStartImport.setEnabled(False)
         self.btnStartImport.setText("インポート中...")
@@ -671,6 +676,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._update_db_info()
         self._populate_oaza_combo()
 
+        if getattr(self, '_rename_zip_after_import', False):
+            self._rename_zips_with_municipality()
+
         QMessageBox.information(
             self, "インポート完了",
             f"インポートが完了しました。\n\n"
@@ -685,6 +693,54 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self.btnStartImport.setText("インポート開始")
         self._update_ui_state()
         QMessageBox.critical(self, "エラー", f"インポート中にエラーが発生しました:\n{error_msg}")
+
+    def _rename_zips_with_municipality(self):
+        """ZIPファイルに行政区画名を追記してリネームする。"""
+        import io, zipfile, xml.etree.ElementTree as ET
+        NS = 'http://www.moj.go.jp/MINJI/tizuxml'
+
+        def peek_name(zip_path):
+            def from_xml(data):
+                try:
+                    root = ET.fromstring(data)
+                    el = root.find(f'{{{NS}}}市区町村名')
+                    return el.text.strip() if el is not None and el.text else None
+                except Exception:
+                    return None
+            try:
+                with zipfile.ZipFile(zip_path) as outer:
+                    for name in outer.namelist():
+                        if name.lower().endswith('.xml'):
+                            return from_xml(outer.read(name))
+                        if name.lower().endswith('.zip'):
+                            with zipfile.ZipFile(io.BytesIO(outer.read(name))) as inner:
+                                for iname in inner.namelist():
+                                    if iname.lower().endswith('.xml'):
+                                        return from_xml(inner.read(iname))
+            except Exception:
+                return None
+
+        renamed, skipped = [], []
+        for zip_path in getattr(self, '_selected_zips', []):
+            if not zip_path.exists():
+                skipped.append(zip_path.name)
+                continue
+            muni = peek_name(zip_path)
+            if not muni or zip_path.stem.endswith(muni):
+                skipped.append(zip_path.name)
+                continue
+            new_path = zip_path.with_name(f"{zip_path.stem}_{muni}{zip_path.suffix}")
+            try:
+                zip_path.rename(new_path)
+                renamed.append(f"{zip_path.name} → {new_path.name}")
+            except Exception as e:
+                skipped.append(zip_path.name)
+
+        if renamed:
+            msg = "ZIPをリネームしました:\n" + "\n".join(renamed)
+            if skipped:
+                msg += "\n\nスキップ:\n" + "\n".join(skipped)
+            QMessageBox.information(self, "ZIPリネーム", msg)
 
     # ─── Preview Tab ────────────────────────────────────────
 

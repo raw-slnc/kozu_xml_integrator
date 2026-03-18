@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Optional, Callable, List
 import gc
 import logging
+import tempfile
+import zipfile
 
 from qgis.PyQt.QtWidgets import (
     QWidget, QFileDialog, QMessageBox, QInputDialog
@@ -56,20 +58,19 @@ class ImportWorker(QObject):
     finished = pyqtSignal(object)  # ImportResult
     error = pyqtSignal(str)
 
-    def __init__(self, xml_dir: Path, db_path: Path,
+    def __init__(self, db_path: Path,
                  municipality_layer: Optional[QgsVectorLayer] = None,
                  municipality_name_field: str = 'N03_004',
                  oaza_layer: Optional[QgsVectorLayer] = None,
                  oaza_name_field: str = 'S_NAME',
-                 include_subdirs: bool = True):
+                 zip_files: Optional[List[Path]] = None):
         super().__init__()
-        self.xml_dir = xml_dir
+        self.zip_files = zip_files or []
         self.db_path = db_path
         self.municipality_layer = municipality_layer
         self.municipality_name_field = municipality_name_field
         self.oaza_layer = oaza_layer
         self.oaza_name_field = oaza_name_field
-        self.include_subdirs = include_subdirs
         self._cancelled = False
 
     def run(self):
@@ -101,10 +102,8 @@ class ImportWorker(QObject):
                 status = f"{prog.current_file} ({prog.completed_files}/{prog.total_files})"
                 self.progress.emit(percent, status)
 
-            result = importer.import_directory(
-                self.xml_dir,
-                include_subdirs=self.include_subdirs,
-                progress_callback=progress_callback
+            result = self._import_multiple_zips(
+                importer, self.zip_files, progress_callback
             )
 
             # Build search index
@@ -323,6 +322,32 @@ class ImportWorker(QObject):
         logger.debug(f"Oaza names in layer: {list(centers.keys())[:10]}...")
         return centers
 
+    def _import_multiple_zips(self, importer, zip_files: List[Path], progress_callback):
+        """Extract all ZIPs to a temp dir and import as directory."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            for zip_path in zip_files:
+                try:
+                    with zipfile.ZipFile(zip_path, 'r') as zf:
+                        zf.extractall(tmp_path)
+                except zipfile.BadZipFile:
+                    logger.warning(f"Skipping bad ZIP: {zip_path.name}")
+
+            # 内側のZIPも展開する（2重構造対応）
+            for inner_zip in tmp_path.rglob('*.zip'):
+                try:
+                    with zipfile.ZipFile(inner_zip, 'r') as izf:
+                        izf.extractall(inner_zip.parent)
+                    inner_zip.unlink()
+                except zipfile.BadZipFile:
+                    logger.warning(f"Skipping bad inner ZIP: {inner_zip.name}")
+
+            return importer.import_directory(
+                tmp_path,
+                include_subdirs=True,
+                progress_callback=progress_callback
+            )
+
     def cancel(self):
         """Request cancellation of the import."""
         self._cancelled = True
@@ -347,7 +372,8 @@ class ImportPanelController:
             dock_widget: The main dock widget instance
         """
         self.dock = dock_widget
-        self.xml_folder: Optional[Path] = None
+        self._selected_zips: List[Path] = []
+        self._rename_zip_after_import: bool = False
         self.municipality_layer_path: Optional[Path] = None
         self.oaza_layer_path: Optional[Path] = None
         self.output_db_path: Optional[Path] = None
@@ -361,24 +387,28 @@ class ImportPanelController:
 
     def _connect_signals(self):
         """Connect UI signals to handlers."""
-        self.dock.btnSelectXmlFolder.clicked.connect(self._on_select_xml_folder)
+        self.dock.btnSelectXmlFolder.clicked.connect(self._on_select_xml_source)
         self.dock.btnSelectMunicipalityLayer.clicked.connect(self._on_select_municipality_layer)
         self.dock.btnSelectOazaLayer.clicked.connect(self._on_select_oaza_layer)
         self.dock.btnSelectOutputDb.clicked.connect(self._on_select_output_db)
         self.dock.btnOpenExistingDb.clicked.connect(self._on_open_existing_db)
         self.dock.btnStartImport.clicked.connect(self._on_start_import)
 
-    def _on_select_xml_folder(self):
-        """Handle XML folder selection."""
-        folder = QFileDialog.getExistingDirectory(
+    def _on_select_xml_source(self):
+        """Open ZIP file selection dialog (multiple selection)."""
+        paths, _ = QFileDialog.getOpenFileNames(
             self.dock,
-            "XMLフォルダを選択",
-            str(Path.home())
+            "ZIPファイルを選択",
+            str(Path.home()),
+            "ZIPファイル (*.zip)"
         )
-
-        if folder:
-            self.xml_folder = Path(folder)
-            self.dock.lineEditXmlFolder.setText(str(self.xml_folder))
+        if paths:
+            self._selected_zips = [Path(p) for p in paths]
+            if len(self._selected_zips) == 1:
+                label = str(self._selected_zips[0])
+            else:
+                label = f"{len(self._selected_zips)}件のZIPファイル"
+            self.dock.lineEditXmlFolder.setText(label)
             self._update_import_button_state()
 
     def _on_select_municipality_layer(self):
@@ -649,11 +679,8 @@ class ImportPanelController:
 
     def _update_import_button_state(self):
         """Enable/disable import button based on input validation."""
-        can_import = (
-            self.xml_folder is not None and
-            self.xml_folder.exists() and
-            self.output_db_path is not None
-        )
+        has_source = bool(self._selected_zips) and all(p.exists() for p in self._selected_zips)
+        can_import = has_source and self.output_db_path is not None
         self.dock.btnStartImport.setEnabled(can_import)
 
     def _on_start_import(self):
@@ -676,15 +703,16 @@ class ImportPanelController:
         if self.dock.comboOazaField.isEnabled():
             oaza_name_field = self.dock.comboOazaField.currentText()
 
+        self._rename_zip_after_import = self.dock.chkRenameZip.isChecked()
+
         # Create worker
         self._worker = ImportWorker(
-            xml_dir=self.xml_folder,
             db_path=self.output_db_path,
             municipality_layer=self.municipality_layer,
             municipality_name_field=municipality_name_field,
             oaza_layer=self.oaza_layer,
             oaza_name_field=oaza_name_field,
-            include_subdirs=self.dock.chkIncludeSubdirs.isChecked()
+            zip_files=self._selected_zips,
         )
 
         # Create thread
@@ -752,6 +780,10 @@ class ImportPanelController:
 
         QMessageBox.information(self.dock, "インポート完了", msg)
 
+        # Rename ZIPs if requested
+        if self._rename_zip_after_import and self._selected_zips:
+            self._rename_zips_with_municipality()
+
         # Add layers to canvas if requested
         if self.dock.chkAddToCanvas.isChecked() and result.files_processed > 0:
             self._add_layers_to_canvas()
@@ -776,6 +808,73 @@ class ImportPanelController:
         if self._thread:
             self._thread.deleteLater()
             self._thread = None
+
+    def _rename_zips_with_municipality(self):
+        """ZIPファイルに行政区画名を追記してリネームする。"""
+        import io
+        renamed = []
+        skipped = []
+
+        for zip_path in self._selected_zips:
+            if not zip_path.exists():
+                skipped.append(zip_path.name)
+                continue
+
+            municipality_name = self._peek_municipality_name(zip_path)
+            if not municipality_name:
+                skipped.append(zip_path.name)
+                continue
+
+            # すでに同名のサフィックスがある場合はスキップ
+            suffix = f"_{municipality_name}"
+            if zip_path.stem.endswith(municipality_name):
+                skipped.append(zip_path.name)
+                continue
+
+            new_name = zip_path.with_name(f"{zip_path.stem}{suffix}{zip_path.suffix}")
+            try:
+                zip_path.rename(new_name)
+                renamed.append(f"{zip_path.name} → {new_name.name}")
+            except Exception as e:
+                logger.warning(f"ZIP rename failed: {zip_path.name}: {e}")
+                skipped.append(zip_path.name)
+
+        if renamed:
+            msg = "ZIPをリネームしました:\n" + "\n".join(renamed)
+            if skipped:
+                msg += "\n\nスキップ:\n" + "\n".join(skipped)
+            QMessageBox.information(self.dock, "ZIPリネーム", msg)
+
+    def _peek_municipality_name(self, zip_path: Path) -> Optional[str]:
+        """ZIPの中のXMLから市区町村名を取得する（2重ZIP対応）。"""
+        import io
+        import xml.etree.ElementTree as ET
+
+        NS = 'http://www.moj.go.jp/MINJI/tizuxml'
+
+        def _extract_name(xml_bytes: bytes) -> Optional[str]:
+            try:
+                root = ET.fromstring(xml_bytes)
+                el = root.find(f'{{{NS}}}市区町村名')
+                return el.text.strip() if el is not None and el.text else None
+            except Exception:
+                return None
+
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as outer:
+                for name in outer.namelist():
+                    if name.lower().endswith('.xml'):
+                        return _extract_name(outer.read(name))
+                    if name.lower().endswith('.zip'):
+                        with outer.open(name) as f:
+                            inner_data = f.read()
+                        with zipfile.ZipFile(io.BytesIO(inner_data)) as inner:
+                            for iname in inner.namelist():
+                                if iname.lower().endswith('.xml'):
+                                    return _extract_name(inner.read(iname))
+        except Exception as e:
+            logger.warning(f"Could not peek municipality name from {zip_path.name}: {e}")
+        return None
 
     def _add_layers_to_canvas(self):
         """Add imported layers to QGIS canvas with styling."""

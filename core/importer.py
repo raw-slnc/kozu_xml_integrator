@@ -17,6 +17,8 @@ from typing import List, Dict, Optional, Callable, Generator, Tuple
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
+import tempfile
+import zipfile
 import time
 
 from qgis.core import QgsVectorLayer
@@ -304,6 +306,69 @@ class XmlImporter:
             errors=errors,
             oaza_assignments=oaza_stats
         )
+
+    def import_zip_file(self, zip_path: Path,
+                       progress_callback: Optional[Callable[[ImportProgress], None]] = None
+                       ) -> ImportResult:
+        """
+        Import all XML files contained in a ZIP archive.
+
+        Supports nested ZIPs (outer ZIP containing inner ZIPs containing XMLs).
+        All ZIPs are extracted to a temporary directory, then processed.
+
+        Args:
+            zip_path: Path to the ZIP file
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            ImportResult: Summary of import operation
+        """
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                names = zf.namelist()
+        except zipfile.BadZipFile:
+            return ImportResult(
+                success=False,
+                files_processed=0,
+                files_failed=0,
+                total_parcels=0,
+                elapsed_seconds=0,
+                errors=[f"不正なZIPファイルです: {zip_path.name}"],
+                oaza_assignments={}
+            )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(tmp_path)
+
+            # 内側のZIPも展開する（2重構造対応）
+            for inner_zip in tmp_path.rglob('*.zip'):
+                try:
+                    with zipfile.ZipFile(inner_zip, 'r') as izf:
+                        izf.extractall(inner_zip.parent)
+                    inner_zip.unlink()
+                except zipfile.BadZipFile:
+                    logger.warning(f"Skipping bad inner ZIP: {inner_zip.name}")
+
+            xml_files = list(tmp_path.rglob('*.xml'))
+            if not xml_files:
+                return ImportResult(
+                    success=False,
+                    files_processed=0,
+                    files_failed=0,
+                    total_parcels=0,
+                    elapsed_seconds=0,
+                    errors=[f"ZIPファイル内にXMLが見つかりません: {zip_path.name}"],
+                    oaza_assignments={}
+                )
+
+            logger.info(f"Extracted {len(xml_files)} XML(s) from {zip_path.name}")
+            return self.import_directory(
+                tmp_path,
+                include_subdirs=True,
+                progress_callback=progress_callback
+            )
 
     def import_files(self, xml_files: List[Path],
                     progress_callback: Optional[Callable[[ImportProgress], None]] = None

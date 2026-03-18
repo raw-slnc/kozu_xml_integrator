@@ -131,7 +131,7 @@
            <item>
             <widget class="QGroupBox" name="groupXmlFolder">
              <property name="title">
-              <string>XMLフォルダ</string>
+              <string>XMLソース</string>
              </property>
              <layout class="QVBoxLayout" name="xmlFolderLayout">
               <item>
@@ -139,7 +139,7 @@
                 <item>
                  <widget class="QLineEdit" name="lineEditXmlFolder">
                   <property name="placeholderText">
-                   <string>XMLファイルのフォルダを選択...</string>
+                   <string>フォルダまたはZIPファイルを選択...</string>
                   </property>
                   <property name="readOnly">
                    <bool>true</bool>
@@ -162,12 +162,12 @@
                </layout>
               </item>
               <item>
-               <widget class="QCheckBox" name="chkIncludeSubdirs">
+               <widget class="QCheckBox" name="chkRenameZip">
                 <property name="text">
-                 <string>サブフォルダも含める</string>
+                 <string>読み込み後ZIPをリネーム（_行政区画名を追記）</string>
                 </property>
                 <property name="checked">
-                 <bool>true</bool>
+                 <bool>false</bool>
                 </property>
                </widget>
               </item>
@@ -682,15 +682,16 @@
          </layout>
         </widget>
        </item>
-       <!-- Tile Layer Control -->
+       <!-- Tile Layer Control (2-column layout) -->
        <item>
-        <widget class="QGroupBox" name="groupTileLayer">
-         <property name="title">
-          <string>背景タイル（公共座標系のみ）</string>
-         </property>
-         <layout class="QVBoxLayout" name="tileLayerLayout">
-          <item>
-           <layout class="QHBoxLayout" name="tileSelectLayout">
+        <layout class="QHBoxLayout" name="tileColumnsLayout">
+         <!-- Left: 背景タイル -->
+         <item>
+          <widget class="QGroupBox" name="groupTileLayer">
+           <property name="title">
+            <string>背景タイル（公共座標系のみ）</string>
+           </property>
+           <layout class="QHBoxLayout" name="tileLayerLayout">
             <item>
              <widget class="QCheckBox" name="chkShowTile">
               <property name="text">
@@ -708,7 +709,7 @@
               </property>
               <property name="sizePolicy">
                <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-                <horstretch>0</horstretch>
+                <horstretch>1</horstretch>
                 <verstretch>0</verstretch>
                </sizepolicy>
               </property>
@@ -742,70 +743,64 @@
              </widget>
             </item>
            </layout>
-          </item>
-          <item>
-           <widget class="QLabel" name="lblTileStatus">
-            <property name="text">
-             <string>座標系を持つデータを選択すると利用可能</string>
-            </property>
-            <property name="styleSheet">
-             <string>color: #666666; font-size: 11px;</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
+          </widget>
+         </item>
+         <!-- Right: オーバーレイタイル -->
+         <item>
+          <widget class="QGroupBox" name="groupOverlayTile">
+           <property name="title">
+            <string>オーバーレイタイル</string>
+           </property>
+           <layout class="QHBoxLayout" name="overlayTileLayout">
+            <item>
+             <widget class="QCheckBox" name="chkOverlayTile">
+              <property name="text">
+               <string>表示</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboOverlaySource">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                <horstretch>1</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="placeholderText">
+               <string>（ソースを選択）</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="spinOverlayOpacity">
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>100</number>
+              </property>
+              <property name="value">
+               <number>50</number>
+              </property>
+              <property name="suffix">
+               <string>%</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
        </item>
-       <!-- Overlay Tile -->
        <item>
-        <widget class="QGroupBox" name="groupOverlayTile">
-         <property name="title">
-          <string>オーバーレイタイル</string>
+        <widget class="QLabel" name="lblTileStatus">
+         <property name="text">
+          <string>座標系を持つデータを選択すると利用可能</string>
          </property>
-         <layout class="QHBoxLayout" name="overlayTileLayout">
-          <item>
-           <widget class="QCheckBox" name="chkOverlayTile">
-            <property name="text">
-             <string>表示</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QComboBox" name="comboOverlaySource">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-              <horstretch>1</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="placeholderText">
-             <string>（ソースを選択）</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QSpinBox" name="spinOverlayOpacity">
-            <property name="minimum">
-             <number>0</number>
-            </property>
-            <property name="maximum">
-             <number>100</number>
-            </property>
-            <property name="value">
-             <number>50</number>
-            </property>
-            <property name="suffix">
-             <string>%</string>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>70</width>
-              <height>16777215</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-         </layout>
+         <property name="styleSheet">
+          <string>color: #666666; font-size: 11px;</string>
+         </property>
         </widget>
        </item>
        <!-- Preview Info -->

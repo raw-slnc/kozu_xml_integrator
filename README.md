@@ -16,7 +16,8 @@ XMLファイルに含まれる大字と森林計画図の大字を照らし合�
 
 ## Features / 主な機能
 
-- Read and parse Legal Affairs Bureau cadastral map XML files / 法務局地図XMLファイルの読み込み・パース
+- Import cadastral map XML from Legal Affairs Bureau ZIP files (supports nested ZIP structure) / 法務局配布ZIPファイルからの公図XML読み込み（2重ZIP構造対応）
+- Optional post-import ZIP rename with municipality name (e.g. `22219-0803-2024.zip` → `22219-0803-2024_賀茂郡西伊豆町.zip`) / インポート後のZIPリネーム（_行政区画名を追記）
 - Cross-reference parcel numbers with forest planning maps / 森林計画図との地番照合
 - Coordinate transformation and positional adjustment / 座標変換・位置調整
 - Overlay tile display (supports QGIS registered XYZ connections and project layers) / オーバーレイタイル表示（QGIS登録済みXYZ接続・プロジェクトレイヤー対応）
