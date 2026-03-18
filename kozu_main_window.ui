@@ -228,6 +228,30 @@
              </property>
             </widget>
            </item>
+           <!-- Tip Section -->
+           <item>
+            <widget class="QGroupBox" name="groupImportTip">
+             <property name="title">
+              <string>座標系について</string>
+             </property>
+             <layout class="QVBoxLayout" name="importTipLayout">
+              <item>
+               <widget class="QLabel" name="lblImportTip">
+                <property name="text">
+                 <string>【公共座標系】地籍調査済みのデータです。系番号（1〜19系）を自動判別し、背景地図との重ね合わせが可能です。
+【任意座標系】背景地図との重ね合わせはできません。</string>
+                </property>
+                <property name="wordWrap">
+                 <bool>true</bool>
+                </property>
+                <property name="styleSheet">
+                 <string>color: #555555; font-size: 11px;</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
            <item>
             <spacer name="importSpacer">
              <property name="orientation">

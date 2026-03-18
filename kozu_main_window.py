@@ -299,6 +299,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._full_extent = None  # Full data extent for zoom-out limit
         self._scale_guard: bool = False  # Guard against recursive scale changes
         self._is_arbitrary: bool = True  # Whether current preview is arbitrary coords
+        self._PREVIEW_CRS = QgsCoordinateReferenceSystem('EPSG:6676')  # Updated per XML
 
         # Link feature state
         self._link_config: Optional[dict] = None
@@ -970,12 +971,16 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         try:
             with self.db.connection() as conn:
-                # Get municipality name from xml_meta
+                # Get municipality name and crs_type from xml_meta
                 muni_row = conn.execute(
-                    "SELECT municipality_name FROM t_xml_meta WHERE id = ?",
+                    "SELECT municipality_name, crs_type FROM t_xml_meta WHERE id = ?",
                     (xml_meta_id,)
                 ).fetchone()
                 self._current_municipality = muni_row[0] if muni_row and muni_row[0] else ''
+                crs_type_db = muni_row[1] if muni_row and muni_row[1] else ''
+                epsg = self._crs_type_to_epsg(crs_type_db)
+                self._PREVIEW_CRS = QgsCoordinateReferenceSystem(f'EPSG:{epsg}')
+                self.map_canvas.setDestinationCrs(self._PREVIEW_CRS)
 
                 cursor = conn.execute("""
                     SELECT id, oaza_name, chiban, AsText(geom) as wkt,
@@ -995,9 +1000,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 QgsProject.instance().removeMapLayer(self.preview_layer.id())
                 self.preview_layer = None
 
-            # Create memory layer
+            # Create memory layer with detected CRS
             self.preview_layer = QgsVectorLayer(
-                "Polygon?crs=EPSG:6676", "preview", "memory"
+                f"Polygon?crs={self._PREVIEW_CRS.authid()}", "preview", "memory"
             )
             provider = self.preview_layer.dataProvider()
 
@@ -1040,8 +1045,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
             provider.addFeatures(features)
 
-            # Track coordinate type
-            self._is_arbitrary = '測量成果' not in crs_types
+            # Track coordinate type: use crs_type from t_xml_meta (authoritative)
+            # coord_type in t_fude_poly indicates measurement method (図上測量/測量成果),
+            # which is independent of the coordinate system (公共/任意).
+            self._is_arbitrary = '公共座標' not in crs_type_db
 
             # Apply polygon style
             symbol = QgsFillSymbol.createSimple({
@@ -1068,7 +1075,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
             if has_public:
                 self.lblTileStatus.setText("公共座標系データ - タイル表示可能")
-                self.lblPreviewCrs.setText("CRS: EPSG:6676 (JGD2011 / Japan Plane Rectangular CS VIII)")
+                self.lblPreviewCrs.setText(f"CRS: {self._PREVIEW_CRS.authid()} ({self._PREVIEW_CRS.description()})")
                 # Auto-enable tile for public coordinate data (unless locked)
                 if not self.chkTileLock.isChecked():
                     self.chkShowTile.setChecked(True)
@@ -1392,7 +1399,17 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
     # ─── CRS Helpers ───────────────────────────────────────
 
-    _PREVIEW_CRS = QgsCoordinateReferenceSystem('EPSG:6676')
+    @staticmethod
+    def _crs_type_to_epsg(crs_type: str) -> int:
+        """公共座標系N系 → EPSG:6668+N。それ以外は6676（8系）を返す。"""
+        import re
+        if crs_type:
+            m = re.search(r'(\d+)系', crs_type)
+            if m:
+                zone = int(m.group(1))
+                if 1 <= zone <= 19:
+                    return 6668 + zone
+        return 6676
 
     def _transform_point_to_preview_crs(self, point: QgsPointXY,
                                          source_crs: QgsCoordinateReferenceSystem) -> QgsPointXY:
@@ -1758,7 +1775,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         if not self.preview_layer or self._is_arbitrary:
             return
         preview_center = self.preview_layer.extent().center()
-        src_crs = QgsCoordinateReferenceSystem("EPSG:6676")
+        src_crs = self._PREVIEW_CRS
         main_canvas = self.iface.mapCanvas()
         dst_crs = main_canvas.mapSettings().destinationCrs()
         if src_crs != dst_crs:
@@ -2091,7 +2108,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         if not self.chkTileLock.isChecked():
             self.chkShowTile.setChecked(True)
         self.lblTileStatus.setText("座標変換済み - タイル表示可能")
-        self.lblPreviewCrs.setText("CRS: EPSG:6676 (座標変換済み)")
+        self.lblPreviewCrs.setText(f"CRS: {self._PREVIEW_CRS.authid()} (座標変換済み)")
 
         # Enable GPKG export (now scaled)
         self._update_export_gpkg_state()
