@@ -311,6 +311,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._main_select_tool: Optional[MainSelectTool] = None
         self._preview_tool: Optional[PreviewClickTool] = None
         self._scale_sync_guard: bool = False  # Guard for bidirectional scale sync
+        self._pan_sync_guard: bool = False   # Guard for bidirectional pan sync
+        self._last_preview_scale: float = 0  # Track preview scale to detect zoom vs pan
+        self._last_main_scale: float = 0     # Track main scale to detect zoom vs pan
 
         # Initialize UI
         self._setup_map_canvas()
@@ -462,6 +465,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         # Scale sync: main canvas → preview canvas (when tile is active)
         self.iface.mapCanvas().scaleChanged.connect(self._on_main_canvas_scale_changed)
+
+        # Pan sync: bidirectional (when tile is active)
+        self.map_canvas.extentsChanged.connect(self._on_preview_pan)
+        self.iface.mapCanvas().extentsChanged.connect(self._on_main_pan)
 
     def _load_settings(self):
         """Load saved settings."""
@@ -1073,19 +1080,13 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             self.chkShowTile.setEnabled(has_public)
             self.comboTileSource.setEnabled(has_public and self.chkShowTile.isChecked())
             self.chkOverlayTile.setEnabled(has_public)
-            self.comboOverlaySource.setEnabled(has_public and self.chkOverlayTile.isChecked())
+            self.comboOverlaySource.setEnabled(has_public)
             self.spinOverlayOpacity.setEnabled(has_public)
 
             if has_public:
                 self.lblTileStatus.setText("公共座標系データ - タイル表示可能")
                 self.lblPreviewCrs.setText(f"CRS: {self._PREVIEW_CRS.authid()} ({self._PREVIEW_CRS.description()})")
-                # Auto-enable tile for public coordinate data (unless locked)
-                if not self.chkTileLock.isChecked():
-                    self.chkShowTile.setChecked(True)
             else:
-                if not self.chkTileLock.isChecked():
-                    self.chkShowTile.setChecked(False)
-                    self.chkOverlayTile.setChecked(False)
                 self.lblTileStatus.setText("任意座標系データ - タイル表示不可")
                 self._update_crs_label_with_override()
 
@@ -1336,6 +1337,64 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self.map_canvas.zoomScale(new_scale)
         self._scale_guard = False
         self._scale_sync_guard = False
+
+    def _on_preview_pan(self):
+        """Sync main canvas center when preview canvas is panned (not zoomed)."""
+        if self._pan_sync_guard or self._scale_sync_guard or self._is_arbitrary:
+            return
+        if not self.isVisible() or not self.chkShowTile.isChecked():
+            return
+        # Skip if this is a zoom event (scale changed) — scale sync handles that separately
+        current_scale = self.map_canvas.scale()
+        if self._last_preview_scale and abs(current_scale - self._last_preview_scale) / max(current_scale, 1) > 0.01:
+            self._last_preview_scale = current_scale
+            return
+        self._last_preview_scale = current_scale
+        center = self.map_canvas.extent().center()
+        main_canvas = self.iface.mapCanvas()
+        dst_crs = main_canvas.mapSettings().destinationCrs()
+        try:
+            if self._PREVIEW_CRS != dst_crs:
+                transform = QgsCoordinateTransform(self._PREVIEW_CRS, dst_crs, QgsProject.instance())
+                center = transform.transform(center)
+            me = main_canvas.extent()
+            hw, hh = me.width() / 2, me.height() / 2
+            self._pan_sync_guard = True
+            main_canvas.setExtent(QgsRectangle(center.x() - hw, center.y() - hh,
+                                               center.x() + hw, center.y() + hh))
+            main_canvas.refresh()
+        finally:
+            self._pan_sync_guard = False
+
+    def _on_main_pan(self):
+        """Sync preview canvas center when main canvas is panned (not zoomed)."""
+        if self._pan_sync_guard or self._scale_sync_guard or self._is_arbitrary:
+            return
+        if not self.isVisible() or not self.chkShowTile.isChecked():
+            return
+        # Skip if this is a zoom event (scale changed)
+        main_canvas = self.iface.mapCanvas()
+        current_scale = main_canvas.scale()
+        if self._last_main_scale and abs(current_scale - self._last_main_scale) / max(current_scale, 1) > 0.01:
+            self._last_main_scale = current_scale
+            return
+        self._last_main_scale = current_scale
+        center = main_canvas.extent().center()
+        src_crs = main_canvas.mapSettings().destinationCrs()
+        try:
+            if src_crs != self._PREVIEW_CRS:
+                transform = QgsCoordinateTransform(src_crs, self._PREVIEW_CRS, QgsProject.instance())
+                center = transform.transform(center)
+            pe = self.map_canvas.extent()
+            hw, hh = pe.width() / 2, pe.height() / 2
+            self._pan_sync_guard = True
+            self._scale_guard = True
+            self.map_canvas.setExtent(QgsRectangle(center.x() - hw, center.y() - hh,
+                                                   center.x() + hw, center.y() + hh))
+            self.map_canvas.refresh()
+        finally:
+            self._scale_guard = False
+            self._pan_sync_guard = False
 
     # ─── Link Settings ──────────────────────────────────────
 
@@ -2315,17 +2374,20 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         layers = []
         if self.preview_layer:
             layers.append(self.preview_layer)
-        if self.overlay_tile_layer and self.chkOverlayTile.isChecked():
-            layers.append(self.overlay_tile_layer)
-        if self.tile_layer and self.chkShowTile.isChecked():
-            layers.append(self.tile_layer)
+        if not self._is_arbitrary:
+            if self.overlay_tile_layer and self.chkOverlayTile.isChecked():
+                layers.append(self.overlay_tile_layer)
+            if self.tile_layer and self.chkShowTile.isChecked():
+                layers.append(self.tile_layer)
         self.map_canvas.setLayers(layers)
 
     # ─── Overlay Tile Controls ──────────────────────────────
 
     def _on_overlay_tile_toggle(self, state: int):
         """Handle overlay tile visibility toggle."""
-        if state == Qt.Checked:
+        show = state == Qt.Checked
+        self.comboOverlaySource.setEnabled(show)
+        if show:
             self._load_overlay_tile()
         else:
             self.overlay_tile_layer = None
