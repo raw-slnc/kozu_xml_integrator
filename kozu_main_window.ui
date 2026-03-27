@@ -823,6 +823,9 @@
            <layout class="QHBoxLayout" name="overlayTileLayout">
             <item>
              <widget class="QCheckBox" name="chkOverlayTile">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
               <property name="text">
                <string>表示</string>
               </property>
@@ -830,6 +833,9 @@
             </item>
             <item>
              <widget class="QComboBox" name="comboOverlaySource">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
               <property name="sizePolicy">
                <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
                 <horstretch>1</horstretch>
@@ -843,6 +849,9 @@
             </item>
             <item>
              <widget class="QSpinBox" name="spinOverlayOpacity">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
               <property name="minimum">
                <number>0</number>
               </property>

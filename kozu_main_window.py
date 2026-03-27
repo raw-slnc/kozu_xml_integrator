@@ -314,6 +314,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._pan_sync_guard: bool = False   # Guard for bidirectional pan sync
         self._last_preview_scale: float = 0  # Track preview scale to detect zoom vs pan
         self._last_main_scale: float = 0     # Track main scale to detect zoom vs pan
+        self._loading_settings: bool = False  # Guard: _load_settings 中の誤保存防止
 
         # Initialize UI
         self._setup_map_canvas()
@@ -472,6 +473,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
     def _load_settings(self):
         """Load saved settings."""
+        self._loading_settings = True
         settings = QSettings()
         settings.beginGroup('KozuXmlIntegrator')
         last_db = settings.value('last_database', '')
@@ -490,10 +492,15 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._populate_overlay_sources()
         if overlay_source_name:
             idx = self.comboOverlaySource.findText(overlay_source_name)
-            if idx >= 0:
+            # itemData が None のものはセクションヘッダーなので復元対象外
+            if idx >= 0 and self.comboOverlaySource.itemData(idx) is not None:
                 self.comboOverlaySource.setCurrentIndex(idx)
+        # シグナルをブロックして復元することで、XML未読み込み時にタイルが
+        # 有効化・ロードされるのを防ぐ。タイルの実際のロードはXML選択時に行われる
+        self.chkOverlayTile.blockSignals(True)
         if overlay_enabled and self.comboOverlaySource.currentData():
             self.chkOverlayTile.setChecked(True)
+        self.chkOverlayTile.blockSignals(False)
 
         # Load link config
         from .ui.link_settings_dialog import LinkSettingsDialog
@@ -507,8 +514,12 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         else:
             self.tabWidget.setCurrentWidget(self.tabImport)
 
+        self._loading_settings = False
+
     def _save_settings(self):
         """Save current settings."""
+        if self._loading_settings:
+            return
         settings = QSettings()
         settings.beginGroup('KozuXmlIntegrator')
         if self.db_path:
@@ -517,6 +528,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         settings.setValue('overlay_tile_enabled', self.chkOverlayTile.isChecked())
         settings.setValue('overlay_tile_opacity', self.spinOverlayOpacity.value())
         settings.endGroup()
+        settings.sync()  # QGIS終了時にOSがフラッシュする前に確実に書き込む
 
     # ─── Database ───────────────────────────────────────────
 
@@ -1090,22 +1102,26 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 self.lblTileStatus.setText("任意座標系データ - タイル表示不可")
                 self._update_crs_label_with_override()
 
-            # Update GPKG export button state
-            self._update_export_gpkg_state()
-
-            # Set up canvas layers
-            self._update_canvas_layers()
-
-            # Zoom to extent and set zoom-out limit
-            self._max_zoom_out_scale = 0  # Reset before setExtent to avoid blocking
+            # 1. 先に描画範囲を確定させる (QGIS 3.44系でのタイル描画漏れ対策)
+            # レイヤーを追加する前にキャンバスの状態を整えることで、XYZタイルの初期リクエストを確実にします
             if features:
                 extent = self.preview_layer.extent()
                 extent.scale(1.1)
                 self.map_canvas.setExtent(extent)
                 self._update_zoom_limit()
 
-            self.map_canvas.refresh()
+            # 2. 公共座標系の場合、チェックが入っていればレイヤーを生成する
+            # update_canvas=False を指定し、無駄な再描画を抑えつつ最後に一括更新します
+            if has_public:
+                if self.chkShowTile.isChecked():
+                    self._load_tile_layer(update_canvas=False)
+                if self.chkOverlayTile.isChecked():
+                    self._load_overlay_tile(update_canvas=False)
 
+            # 3. 最後にまとめてレイヤーをセットし、強制再描画を行う
+            self._update_canvas_layers()
+            self._update_export_gpkg_state()
+            self.map_canvas.refresh()
             # Pan main canvas to preview center (public coord only)
             if has_public and features:
                 self._pan_main_to_preview_center()
@@ -2170,6 +2186,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self.chkShowTile.setEnabled(True)
         if not self.chkTileLock.isChecked():
             self.chkShowTile.setChecked(True)
+        self.chkOverlayTile.setEnabled(True)
+        self.comboOverlaySource.setEnabled(self.chkOverlayTile.isChecked())
+        self.spinOverlayOpacity.setEnabled(True)
         self.lblTileStatus.setText("座標変換済み - タイル表示可能")
         self.lblPreviewCrs.setText(f"CRS: {self._PREVIEW_CRS.authid()} (座標変換済み)")
 
@@ -2178,6 +2197,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         # Recalculate zoom-out limit for new coordinate space
         self._update_zoom_limit()
+
+        # チェックボックスが既にチェック済みの場合 stateChanged が発火しないため明示的に更新
+        self._update_canvas_layers()
         self.map_canvas.refresh()
 
         # Sync preview scale to main canvas (initial sync after georef)
@@ -2352,7 +2374,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         if self.chkShowTile.isChecked():
             self._load_tile_layer()
 
-    def _load_tile_layer(self):
+    def _load_tile_layer(self, update_canvas=True):
         """Load tile layer based on current selection."""
         tile_name = self.comboTileSource.currentText()
         tile_url = GSI_TILE_URLS.get(tile_name)
@@ -2362,7 +2384,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         uri = f"type=xyz&url={tile_url}&zmax=18&zmin=2"
         self.tile_layer = QgsRasterLayer(uri, tile_name, "wms")
 
-        if self.tile_layer.isValid():
+        if self.tile_layer.isValid() and update_canvas:
             self._update_canvas_layers()
             self.map_canvas.refresh()
 
@@ -2379,7 +2401,16 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 layers.append(self.overlay_tile_layer)
             if self.tile_layer and self.chkShowTile.isChecked():
                 layers.append(self.tile_layer)
+
+        # レイヤーリストを更新。QGIS 3.44以降のレンダリング最適化による
+        # 描画漏れを防ぐため、強制リフレッシュ(redrawAllLayers)を併用
         self.map_canvas.setLayers(layers)
+        # QGIS 3.44以降での描画漏れを防ぐため、ラスタレイヤーの再描画を明示的に発火
+        for layer in layers:
+            if isinstance(layer, QgsRasterLayer):
+                layer.triggerRepaint()
+        
+        self.map_canvas.redrawAllLayers()
 
     # ─── Overlay Tile Controls ──────────────────────────────
 
@@ -2393,17 +2424,20 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             self.overlay_tile_layer = None
             self._update_canvas_layers()
         self.map_canvas.refresh()
+        self._save_settings()
 
     def _on_overlay_source_changed(self, index: int):
         """Handle overlay source combo selection change."""
         if self.chkOverlayTile.isChecked():
             self._load_overlay_tile()
+        self._save_settings()
 
     def _on_overlay_opacity_changed(self, value: int):
         """Handle overlay opacity change."""
         if self.overlay_tile_layer:
             self.overlay_tile_layer.renderer().setOpacity(1.0 - value / 100.0)
             self.map_canvas.refresh()
+        self._save_settings()
 
     def _populate_overlay_sources(self):
         """Populate overlay source combo with XYZ connections and project layers."""
@@ -2495,7 +2529,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 results.append((layer.name(), meta))
         return results
 
-    def _load_overlay_tile(self):
+    def _load_overlay_tile(self, update_canvas=True):
         """Load overlay tile layer from the selected combo source."""
         meta = self.comboOverlaySource.currentData()
         if not meta:
@@ -2532,8 +2566,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             opacity = self.spinOverlayOpacity.value()
             layer.renderer().setOpacity(1.0 - opacity / 100.0)
             self.overlay_tile_layer = layer
-            self._update_canvas_layers()
-            self.map_canvas.refresh()
+            if update_canvas:
+                self._update_canvas_layers()
+                self.map_canvas.refresh()
         else:
             logger.warning(f"[Overlay] failed to load source: {display_name}")
             self.overlay_tile_layer = None
