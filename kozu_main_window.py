@@ -284,6 +284,14 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self.db_path: Optional[Path] = None
         self.db: Optional[DatabaseManager] = None
 
+        # Keep XML tree selection highlight active even when focus moves to map canvas
+        self.treeXmlFiles.setStyleSheet("""
+            QTreeWidget::item:selected {
+                background: palette(highlight);
+                color: palette(highlighted-text);
+            }
+        """)
+
         # Preview components
         self.map_canvas: Optional[QgsMapCanvas] = None
         self.tile_layer: Optional[QgsRasterLayer] = None

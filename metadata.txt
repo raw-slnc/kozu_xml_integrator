@@ -8,7 +8,7 @@
 name=Kozu XML Integrator
 qgisMinimumVersion=3.40
 description=Cross-references cadastral XML (Kozu) with forest planning maps for on-site boundary survey support.
-version=0.2.3
+version=0.2.4
 author=Hideharu Masai
 email=hideharumasai@void.mints.ne.jp
 
@@ -22,6 +22,7 @@ repository=https://github.com/raw-slnc/kozu_xml_integrator
 
 hasProcessingProvider=no
 changelog=
+    0.2.4 - Keep XML tree selection highlight active while operating on map canvas (uses system highlight color)
     0.2.3 - Fix QGIS 3.44 compatibility: background tile not rendered after coordinate matching; overlay tile controls not enabled after matching; overlay tile settings (source/enabled state) not persisted across QGIS restarts
     0.2.2 - Fix overlay tile remaining active for arbitrary coordinate system data; Minor fixes
     0.2.1 - Add legal notice (登記所備付地図データ利用規約) and coordinate system explanation in UI; add "Developed by Avid Tree Work" credit
