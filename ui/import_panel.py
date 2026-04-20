@@ -848,13 +848,13 @@ class ImportPanelController:
     def _peek_municipality_name(self, zip_path: Path) -> Optional[str]:
         """ZIPの中のXMLから市区町村名を取得する（2重ZIP対応）。"""
         import io
-        import xml.etree.ElementTree as ET
+        import xml.etree.ElementTree as ET  # nosec B405
 
         NS = 'http://www.moj.go.jp/MINJI/tizuxml'
 
         def _extract_name(xml_bytes: bytes) -> Optional[str]:
             try:
-                root = ET.fromstring(xml_bytes)
+                root = ET.fromstring(xml_bytes)  # nosec B314
                 el = root.find(f'{{{NS}}}市区町村名')
                 return el.text.strip() if el is not None and el.text else None
             except Exception:

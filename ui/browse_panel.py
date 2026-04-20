@@ -159,7 +159,7 @@ class BrowsePanelController:
             return
 
         # Create layer with SQL subset filter
-        uri = f"{self.db_path}|layername=t_fude_poly|subset=xml_meta_id IN (SELECT id FROM t_xml_meta WHERE crs_type = '公共座標8系')"
+        uri = f"{self.db_path}|layername=t_fude_poly|subset=xml_meta_id IN (SELECT id FROM t_xml_meta WHERE crs_type = '公共座標8系')"  # nosec B608
         layer = QgsVectorLayer(uri, "公共座標8系_筆", "ogr")
 
         if not layer.isValid():
@@ -199,7 +199,7 @@ class BrowsePanelController:
             )
             return
 
-        uri = f"{self.db_path}|layername=t_fude_poly|subset=xml_meta_id IN (SELECT id FROM t_xml_meta WHERE crs_type = '任意座標系')"
+        uri = f"{self.db_path}|layername=t_fude_poly|subset=xml_meta_id IN (SELECT id FROM t_xml_meta WHERE crs_type = '任意座標系')"  # nosec B608
         layer = QgsVectorLayer(uri, "任意座標系_筆（変換前）", "ogr")
 
         if not layer.isValid():

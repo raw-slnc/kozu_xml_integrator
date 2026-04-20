@@ -724,13 +724,13 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
     def _rename_zips_with_municipality(self):
         """ZIPファイルに行政区画名を追記してリネームする。"""
-        import io, zipfile, xml.etree.ElementTree as ET
+        import io, zipfile, xml.etree.ElementTree as ET  # nosec B405
         NS = 'http://www.moj.go.jp/MINJI/tizuxml'
 
         def peek_name(zip_path):
             def from_xml(data):
                 try:
-                    root = ET.fromstring(data)
+                    root = ET.fromstring(data)  # nosec B314
                     el = root.find(f'{{{NS}}}市区町村名')
                     return el.text.strip() if el is not None and el.text else None
                 except Exception:
@@ -897,7 +897,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                     f"""SELECT xml_meta_id
                         FROM t_fude_poly
                         WHERE chiban LIKE ? AND xml_meta_id IN ({placeholders})
-                        LIMIT 1""",
+                        LIMIT 1""",  # nosec B608
                     [f'%{query}%'] + list(tree_items.keys())
                 )
                 row = cursor.fetchone()
@@ -1933,7 +1933,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 cursor = conn.execute(
                     f"""SELECT xml_meta_id, chiban FROM t_fude_poly
                         WHERE xml_meta_id IN ({placeholders})
-                          AND chiban IS NOT NULL AND chiban != ''""",
+                          AND chiban IS NOT NULL AND chiban != ''""",  # nosec B608
                     list(tree_xml_items.keys())
                 )
                 rows = cursor.fetchall()

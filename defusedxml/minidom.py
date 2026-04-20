@@ -7,7 +7,7 @@
 """
 from __future__ import print_function, absolute_import
 
-from xml.dom.minidom import _do_pulldom_parse
+from xml.dom.minidom import _do_pulldom_parse  # nosec B408
 from . import expatbuilder as _expatbuilder
 from . import pulldom as _pulldom
 

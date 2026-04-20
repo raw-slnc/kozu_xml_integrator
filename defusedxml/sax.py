@@ -7,8 +7,8 @@
 """
 from __future__ import print_function, absolute_import
 
-from xml.sax import InputSource as _InputSource
-from xml.sax import ErrorHandler as _ErrorHandler
+from xml.sax import InputSource as _InputSource  # nosec B406
+from xml.sax import ErrorHandler as _ErrorHandler  # nosec B406
 
 from . import expatreader
 

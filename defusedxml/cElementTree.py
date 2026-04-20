@@ -11,12 +11,12 @@ import warnings
 
 from .common import _generate_etree_functions
 
-from xml.etree.cElementTree import TreeBuilder as _TreeBuilder
-from xml.etree.cElementTree import parse as _parse
-from xml.etree.cElementTree import tostring
+from xml.etree.cElementTree import TreeBuilder as _TreeBuilder  # nosec B405
+from xml.etree.cElementTree import parse as _parse  # nosec B405
+from xml.etree.cElementTree import tostring  # nosec B405
 
 # iterparse from ElementTree!
-from xml.etree.ElementTree import iterparse as _iterparse
+from xml.etree.ElementTree import iterparse as _iterparse  # nosec B405
 
 # This module is an alias for ElementTree just like xml.etree.cElementTree
 from .ElementTree import (
