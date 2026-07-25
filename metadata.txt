@@ -7,8 +7,9 @@
 [general]
 name=Kozu XML Integrator
 qgisMinimumVersion=3.40
+qgisMaximumVersion=3.99
 description=Cross-references cadastral XML (Kozu) with forest planning maps for on-site boundary survey support.
-version=0.2.5
+version=0.2.6
 author=Hideharu Masai
 email=hideharumasai@void.mints.ne.jp
 
@@ -22,6 +23,7 @@ repository=https://github.com/raw-slnc/kozu_xml_integrator
 
 hasProcessingProvider=no
 changelog=
+    0.2.6 - Final QGIS 3.x release. Explicitly declare qgisMaximumVersion=3.99 to lock the QGIS 3.x compatibility upper bound; QGIS 4.x support to be developed separately. Also: fix QPdfWriter Qt version fallback logic (previously always re-attempted the QtPrintSupport import even after a successful QtGui import); resolve all Flake8 findings (unused imports/variables, duplicate import, non-interpolated f-strings, replace wildcard resources import with explicit side-effect import); clean up indentation/whitespace style issues (no functional changes)
     0.2.5 - Fix bandit security scan warnings: add nosec B608 to parameterized SQL queries using placeholders pattern; add nosec B405/B314 to local XML parsing from trusted sources; add nosec to vendored defusedxml library (false positives from security library internals)
     0.2.4 - Fix Windows: XML tree selection highlight turns gray when focus moves to map canvas; now keeps system highlight color
     0.2.3 - Fix QGIS 3.44 compatibility: background tile not rendered after coordinate matching; overlay tile controls not enabled after matching; overlay tile settings (source/enabled state) not persisted across QGIS restarts

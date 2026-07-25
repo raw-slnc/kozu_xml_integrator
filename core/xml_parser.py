@@ -13,7 +13,7 @@ XML Structure:
   - 主題属性: 筆界点, 筆界線, 筆 (thematic attributes)
 """
 
-from typing import Dict, List, Tuple, Optional, Generator, Any
+from typing import Dict, List, Tuple, Optional, Generator
 from dataclasses import dataclass, field
 from pathlib import Path
 import xml.etree.ElementTree as ET  # nosec B405
@@ -157,7 +157,7 @@ class KozuXmlParser:
         self._parse_thematic_attributes(root, data)
 
         logger.info(f"Parsed: {len(data.points)} points, {len(data.curves)} curves, "
-                   f"{len(data.surfaces)} surfaces, {len(data.fude_list)} parcels")
+                    f"{len(data.surfaces)} surfaces, {len(data.fude_list)} parcels")
 
         return data
 

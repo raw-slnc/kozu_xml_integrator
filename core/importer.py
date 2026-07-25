@@ -13,9 +13,8 @@ Supports batch processing with progress reporting.
 """
 
 from pathlib import Path
-from typing import List, Dict, Optional, Callable, Generator, Tuple
+from typing import List, Dict, Optional, Callable, Tuple
 from dataclasses import dataclass
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 import tempfile
 import zipfile
@@ -23,7 +22,7 @@ import time
 
 from qgis.core import QgsVectorLayer
 
-from .xml_parser import KozuXmlParser, XmlMapData
+from .xml_parser import KozuXmlParser
 from .geometry_builder import GeometryBuilder
 from .database_manager import DatabaseManager, XmlMetaRecord, FudePolyRecord
 from .spatial_join import SpatialJoiner, load_admin_layer, normalize_municipality_name
@@ -103,8 +102,8 @@ class XmlImporter:
             self._municipality_joiner = SpatialJoiner(municipality_layer, municipality_name_field)
 
     def import_single_file(self, xml_path: Path,
-                          progress_callback: Optional[Callable[[str], None]] = None
-                          ) -> Tuple[bool, int, Optional[str]]:
+                           progress_callback: Optional[Callable[[str], None]] = None
+                           ) -> Tuple[bool, int, Optional[str]]:
         """
         Import a single XML file.
 
@@ -216,9 +215,9 @@ class XmlImporter:
             return False, 0, error_msg
 
     def import_directory(self, xml_dir: Path,
-                        include_subdirs: bool = True,
-                        progress_callback: Optional[Callable[[ImportProgress], None]] = None,
-                        max_workers: int = 1) -> ImportResult:
+                         include_subdirs: bool = True,
+                         progress_callback: Optional[Callable[[ImportProgress], None]] = None,
+                         max_workers: int = 1) -> ImportResult:
         """
         Import all XML files from a directory.
 
@@ -308,8 +307,8 @@ class XmlImporter:
         )
 
     def import_zip_file(self, zip_path: Path,
-                       progress_callback: Optional[Callable[[ImportProgress], None]] = None
-                       ) -> ImportResult:
+                        progress_callback: Optional[Callable[[ImportProgress], None]] = None
+                        ) -> ImportResult:
         """
         Import all XML files contained in a ZIP archive.
 
@@ -325,7 +324,7 @@ class XmlImporter:
         """
         try:
             with zipfile.ZipFile(zip_path, 'r') as zf:
-                names = zf.namelist()
+                zf.namelist()
         except zipfile.BadZipFile:
             return ImportResult(
                 success=False,
@@ -371,8 +370,8 @@ class XmlImporter:
             )
 
     def import_files(self, xml_files: List[Path],
-                    progress_callback: Optional[Callable[[ImportProgress], None]] = None
-                    ) -> ImportResult:
+                     progress_callback: Optional[Callable[[ImportProgress], None]] = None
+                     ) -> ImportResult:
         """
         Import a list of XML files.
 

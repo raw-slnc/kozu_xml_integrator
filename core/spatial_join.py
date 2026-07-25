@@ -10,7 +10,7 @@ based on spatial intersection.
 """
 
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Optional
 import logging
 import re
 
@@ -19,7 +19,6 @@ from qgis.core import (
     QgsFeature,
     QgsGeometry,
     QgsSpatialIndex,
-    QgsFeatureRequest,
     QgsRectangle,
 )
 
@@ -201,7 +200,7 @@ class SpatialJoiner:
         return self.find_oaza_for_geometry(point_geom)
 
     def find_oaza_for_bounds(self, min_x: float, min_y: float,
-                            max_x: float, max_y: float) -> Optional[str]:
+                             max_x: float, max_y: float) -> Optional[str]:
         """
         Find the Oaza name for a bounding box.
 
@@ -262,7 +261,7 @@ def load_admin_layer(layer_path: Path, layer_name: Optional[str] = None) -> QgsV
 
 
 def assign_oaza_to_xml_meta(db: DatabaseManager, admin_layer: QgsVectorLayer,
-                           name_field: str = 'S_NAME') -> Dict[str, int]:
+                            name_field: str = 'S_NAME') -> Dict[str, int]:
     """
     Assign Oaza names to all XML metadata records in the database.
 

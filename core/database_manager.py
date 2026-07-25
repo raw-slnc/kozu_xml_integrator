@@ -14,10 +14,9 @@ Database Schema:
 
 import sqlite3
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple, Generator
+from typing import List, Dict, Any, Optional, Tuple
 from contextlib import contextmanager
 from dataclasses import dataclass
-import json
 import logging
 
 from qgis.core import (
@@ -361,7 +360,7 @@ class DatabaseManager:
             return cursor.lastrowid
 
     def insert_fude_batch(self, records: List[FudePolyRecord],
-                         batch_size: int = 1000) -> int:
+                          batch_size: int = 1000) -> int:
         """
         Insert parcel records in batches for efficiency.
 
@@ -690,7 +689,7 @@ class DatabaseManager:
             return [dict(row) for row in cursor.fetchall()]
 
     def export_to_geopackage(self, gpkg_path: Path, oaza_name: Optional[str] = None,
-                            xml_meta_ids: Optional[List[int]] = None) -> bool:
+                             xml_meta_ids: Optional[List[int]] = None) -> bool:
         """
         Export data to GeoPackage format.
 

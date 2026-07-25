@@ -8,11 +8,11 @@ Handles the export tab UI logic:
 """
 
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 import logging
 
 from qgis.PyQt.QtWidgets import (
-    QWidget, QFileDialog, QMessageBox
+    QFileDialog, QMessageBox
 )
 from qgis.PyQt.QtCore import QThread, pyqtSignal, QObject
 from qgis.core import (

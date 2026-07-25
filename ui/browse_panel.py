@@ -10,11 +10,11 @@ Handles the browse/search tab UI logic:
 """
 
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List
 import logging
 
 from qgis.PyQt.QtWidgets import (
-    QWidget, QFileDialog, QMessageBox, QTableWidgetItem
+    QFileDialog, QMessageBox, QTableWidgetItem
 )
 from qgis.PyQt.QtCore import Qt
 from qgis.core import (
@@ -22,9 +22,7 @@ from qgis.core import (
     QgsProject,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
-    QgsRectangle,
     QgsGeometry,
-    QgsFeature,
 )
 from qgis.utils import iface
 
@@ -181,8 +179,8 @@ class BrowsePanelController:
         QMessageBox.information(
             self.dock,
             "完了",
-            f"公共座標8系レイヤーを追加しました。\n"
-            f"CRS: EPSG:6676 (JGD2011 / Japan Plane Rectangular CS VIII)"
+            "公共座標8系レイヤーを追加しました。\n"
+            "CRS: EPSG:6676 (JGD2011 / Japan Plane Rectangular CS VIII)"
         )
 
     def add_arbitrary_crs_layer_to_project(self):
@@ -217,8 +215,8 @@ class BrowsePanelController:
         QMessageBox.information(
             self.dock,
             "完了",
-            f"任意座標系レイヤーを追加しました。\n"
-            f"注意: このデータは変換前のローカル座標です。"
+            "任意座標系レイヤーを追加しました。\n"
+            "注意: このデータは変換前のローカル座標です。"
         )
 
     def _on_oaza_changed(self, oaza: str):

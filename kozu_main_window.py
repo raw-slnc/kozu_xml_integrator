@@ -16,7 +16,8 @@ from qgis.PyQt import uic
 from qgis.PyQt.QtCore import Qt, QSettings, pyqtSignal, QVariant, QPointF, QRectF, QMarginsF, QEvent
 from qgis.PyQt.QtWidgets import (
     QMainWindow, QFileDialog, QMessageBox, QTreeWidgetItem, QShortcut,
-    QApplication, QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QWidget,
+    QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QWidget,
+    QLabel,
 )
 from qgis.PyQt.QtGui import (
     QColor, QKeySequence, QPainter, QPen, QFont, QPageSize, QPageLayout
@@ -31,7 +32,7 @@ from qgis.core import (
     QgsMapSettings, QgsMapRendererCustomPainterJob,
     QgsUnitTypes
 )
-from qgis.gui import QgsMapCanvas, QgsMapTool, QgsMapToolEmitPoint, QgsHighlight, QgsVertexMarker
+from qgis.gui import QgsMapCanvas, QgsMapTool, QgsHighlight, QgsVertexMarker
 
 from .core import DatabaseManager
 import sip  # type: ignore[import-untyped]
@@ -60,6 +61,10 @@ MATCH_COLORS = {
 }
 
 DRAG_THRESHOLD = 5  # pixels
+
+PREVIEW_POSITION_HINT = (
+    "Ctrl+ドラッグで地物位置を微調整できます／位置ロックで固定表示できます"
+)
 
 
 class PreviewClickTool(QgsMapTool):
@@ -358,8 +363,13 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._preview_tool.position_adjusted.connect(self._on_position_adjusted)
         self.map_canvas.setMapTool(self._preview_tool)
 
-        # Wheel event filter for center-snap zoom
+        # Wheel event filter for center-snap zoom + hover hint
         self.map_canvas.viewport().installEventFilter(self)
+
+        # Status bar hint shown while hovering the preview canvas
+        self._lblPreviewHint = QLabel()
+        self._lblPreviewHint.setStyleSheet("color: red;")
+        self.statusBar.addPermanentWidget(self._lblPreviewHint)
 
         # Zoom-out limit
         self.map_canvas.scaleChanged.connect(self._on_scale_changed)
@@ -374,7 +384,15 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._crosshair.resize(event.size())
 
     def eventFilter(self, obj, event):
-        """Intercept wheel events on preview canvas for center-snap zoom."""
+        """Intercept wheel events on preview canvas for center-snap zoom,
+        and show a hover hint about Ctrl+drag position adjustment."""
+        if obj is self.map_canvas.viewport() and event.type() == QEvent.Enter:
+            self._lblPreviewHint.setText(PREVIEW_POSITION_HINT)
+            return False
+        if obj is self.map_canvas.viewport() and event.type() == QEvent.Leave:
+            self._lblPreviewHint.setText("")
+            return False
+
         if (obj is self.map_canvas.viewport()
                 and event.type() == QEvent.Wheel
                 and self._preview_tool._snapped):
@@ -461,6 +479,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         # Refresh overlay source list each time the dropdown opens
         _original_show_popup = self.comboOverlaySource.showPopup
+
         def _refreshed_show_popup():
             self._populate_overlay_sources()
             _original_show_popup()
@@ -724,7 +743,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
     def _rename_zips_with_municipality(self):
         """ZIPファイルに行政区画名を追記してリネームする。"""
-        import io, zipfile, xml.etree.ElementTree as ET  # nosec B405
+        import io
+        import zipfile
+        import xml.etree.ElementTree as ET  # nosec B405
         NS = 'http://www.moj.go.jp/MINJI/tizuxml'
 
         def peek_name(zip_path):
@@ -761,7 +782,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             try:
                 zip_path.rename(new_path)
                 renamed.append(f"{zip_path.name} → {new_path.name}")
-            except Exception as e:
+            except Exception:
                 skipped.append(zip_path.name)
 
         if renamed:
@@ -1499,7 +1520,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         return 6676
 
     def _transform_point_to_preview_crs(self, point: QgsPointXY,
-                                         source_crs: QgsCoordinateReferenceSystem) -> QgsPointXY:
+                                        source_crs: QgsCoordinateReferenceSystem) -> QgsPointXY:
         """Transform a point from source CRS to EPSG:6676 (preview canvas CRS).
 
         Returns the point unchanged if CRSs match or source is invalid.
@@ -1512,8 +1533,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         return transform.transform(point)
 
     def _transform_rect_to_layer_crs(self, rect: QgsRectangle,
-                                      canvas_crs: QgsCoordinateReferenceSystem,
-                                      layer: QgsVectorLayer) -> QgsRectangle:
+                                     canvas_crs: QgsCoordinateReferenceSystem,
+                                     layer: QgsVectorLayer) -> QgsRectangle:
         """Transform a rectangle from canvas CRS to layer CRS for spatial queries."""
         layer_crs = layer.crs()
         if not layer_crs.isValid() or not canvas_crs.isValid() or layer_crs == canvas_crs:
@@ -1709,7 +1730,6 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         # Search lot layer for matches
         enabled_levels = self._enabled_match_levels()
         best_level = None
-        best_bbox = None
         best_lot_feat = None
         match_priority = {'exact': 0, 'parent': 1, 'near': 2}
         combined_extent = QgsRectangle()
@@ -1738,7 +1758,6 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
                 if best_level is None or match_priority[level] < match_priority.get(best_level, 99):
                     best_level = level
-                    best_bbox = bbox
                     best_lot_feat = lot_feat
 
         logger.info(
@@ -2417,7 +2436,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         for layer in layers:
             if isinstance(layer, QgsRasterLayer):
                 layer.triggerRepaint()
-        
+
         self.map_canvas.redrawAllLayers()
 
     # ─── Overlay Tile Controls ──────────────────────────────
@@ -2443,8 +2462,11 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
     def _on_overlay_opacity_changed(self, value: int):
         """Handle overlay opacity change."""
         if self.overlay_tile_layer:
-            self.overlay_tile_layer.renderer().setOpacity(1.0 - value / 100.0)
-            self.map_canvas.refresh()
+            self.overlay_tile_layer.renderer().setOpacity(value / 100.0)
+            # QGIS 3.44以降のレンダリング最適化による描画漏れを防ぐため、
+            # _update_canvas_layers と同様に明示的な再描画発火を併用
+            self.overlay_tile_layer.triggerRepaint()
+            self.map_canvas.redrawAllLayers()
         self._save_settings()
 
     def _populate_overlay_sources(self):
@@ -2572,7 +2594,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         if layer and layer.isValid():
             opacity = self.spinOverlayOpacity.value()
-            layer.renderer().setOpacity(1.0 - opacity / 100.0)
+            layer.renderer().setOpacity(opacity / 100.0)
             self.overlay_tile_layer = layer
             if update_canvas:
                 self._update_canvas_layers()
@@ -2645,12 +2667,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         layout = QPageLayout(page_size, QPageLayout.Landscape, margin,
                              QPageLayout.Millimeter)
 
-        writer = None
         try:
             from qgis.PyQt.QtGui import QPdfWriter
         except ImportError:
-            pass
-        if writer is None:
             try:
                 from qgis.PyQt.QtPrintSupport import QPdfWriter
             except ImportError:

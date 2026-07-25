@@ -9,14 +9,14 @@ Handles the import tab UI logic:
 """
 
 from pathlib import Path
-from typing import Optional, Callable, List
+from typing import Optional, List
 import gc
 import logging
 import tempfile
 import zipfile
 
 from qgis.PyQt.QtWidgets import (
-    QWidget, QFileDialog, QMessageBox, QInputDialog
+    QFileDialog, QMessageBox, QInputDialog
 )
 from qgis.PyQt.QtCore import QThread, pyqtSignal, QObject
 from qgis.core import (
@@ -38,7 +38,6 @@ from ..core import (
     XmlImporter,
     ImportProgress,
     ImportResult,
-    SpatialJoiner,
     SearchIndex,
     load_admin_layer,
 )
@@ -811,7 +810,6 @@ class ImportPanelController:
 
     def _rename_zips_with_municipality(self):
         """ZIPファイルに行政区画名を追記してリネームする。"""
-        import io
         renamed = []
         skipped = []
 

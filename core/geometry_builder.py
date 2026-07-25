@@ -19,7 +19,7 @@ from qgis.core import (
 )
 import logging
 
-from .xml_parser import XmlMapData, Fude, GmPoint, GmCurve, GmSurface
+from .xml_parser import XmlMapData, Fude, GmSurface
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,7 @@ class GeometryBuilder:
         return points
 
     def _points_equal(self, p1: Tuple[float, float], p2: Tuple[float, float],
-                     tolerance: float = 1e-6) -> bool:
+                      tolerance: float = 1e-6) -> bool:
         """Check if two points are equal within tolerance."""
         return (abs(p1[0] - p2[0]) < tolerance and
                 abs(p1[1] - p2[1]) < tolerance)
@@ -353,7 +353,7 @@ def _shoelace_area(points: List[Tuple[float, float]]) -> float:
 
 
 def build_all_fude_geometries(xml_data: XmlMapData,
-                             swap_xy: bool = True) -> Dict[str, QgsGeometry]:
+                              swap_xy: bool = True) -> Dict[str, QgsGeometry]:
     """
     Build geometries for all parcels in the XML data.
 

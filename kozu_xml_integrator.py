@@ -24,8 +24,8 @@
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
-# Initialize Qt resources from file resources.py
-from .resources import *
+# Initialize Qt resources from file resources.py (side-effect import: registers icons etc.)
+from . import resources  # noqa: F401
 
 from .kozu_main_window import KozuMainWindow
 import os.path
@@ -67,8 +67,8 @@ class KozuXmlIntegrator:
         self.pluginIsActive = False
         self.main_window = None
 
-
     # noinspection PyMethodMayBeStatic
+
     def tr(self, message):
         """Get the translation for a string using Qt translation API.
 
@@ -83,18 +83,17 @@ class KozuXmlIntegrator:
         # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
         return QCoreApplication.translate('KozuXmlIntegrator', message)
 
-
     def add_action(
-        self,
-        icon_path,
-        text,
-        callback,
-        enabled_flag=True,
-        add_to_menu=True,
-        add_to_toolbar=True,
-        status_tip=None,
-        whats_this=None,
-        parent=None):
+            self,
+            icon_path,
+            text,
+            callback,
+            enabled_flag=True,
+            add_to_menu=True,
+            add_to_toolbar=True,
+            status_tip=None,
+            whats_this=None,
+            parent=None):
         """Add a toolbar icon to the toolbar.
 
         :param icon_path: Path to the icon for this action. Can be a resource
@@ -158,7 +157,6 @@ class KozuXmlIntegrator:
 
         return action
 
-
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
@@ -169,13 +167,12 @@ class KozuXmlIntegrator:
             callback=self.run,
             parent=self.iface.mainWindow())
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def _on_main_window_destroyed(self):
         """Handle main window destruction."""
         self.main_window = None
         self.pluginIsActive = False
-
 
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
@@ -191,7 +188,7 @@ class KozuXmlIntegrator:
                 action)
             self.iface.removeVectorToolBarIcon(action)
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def run(self):
         """Run method that loads and starts the plugin"""
@@ -208,7 +205,7 @@ class KozuXmlIntegrator:
             self.main_window.show()
             qgis_geom = self.iface.mainWindow().frameGeometry()
             self.main_window.move(
-                qgis_geom.x() + (qgis_geom.width()  - self.main_window.width())  // 2,
+                qgis_geom.x() + (qgis_geom.width() - self.main_window.width()) // 2,
                 qgis_geom.y() + (qgis_geom.height() - self.main_window.height()) // 2
             )
         else:

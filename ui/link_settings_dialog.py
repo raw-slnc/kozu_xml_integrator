@@ -258,8 +258,8 @@ class LinkSettingsDialog(QDialog):
         settings.beginGroup('KozuXmlIntegrator/LinkConfig')
         config = {}
         for key in ['match_mode', 'oaza_layer_name', 'oaza_column',
-                     'lot_layer_name', 'municipality_column',
-                     'parent_column', 'branch_column']:
+                    'lot_layer_name', 'municipality_column',
+                    'parent_column', 'branch_column']:
             val = settings.value(key, '')
             if val:
                 config[key] = val

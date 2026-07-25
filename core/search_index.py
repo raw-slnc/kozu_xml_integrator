@@ -130,7 +130,7 @@ class SearchIndex:
                 node.koaza_map[koaza_code].sort(key=self._chiban_sort_key)
 
         logger.info(f"Search index built: {len(self._oaza_index)} Oaza, "
-                   f"{sum(n.fude_count for n in self._oaza_index.values())} parcels")
+                    f"{sum(n.fude_count for n in self._oaza_index.values())} parcels")
 
     def _normalize_chiban(self, chiban: str) -> str:
         """
@@ -180,7 +180,7 @@ class SearchIndex:
         return self._oaza_index.get(oaza_name)
 
     def get_chiban_list(self, oaza_name: str,
-                       koaza_code: Optional[str] = None) -> List[str]:
+                        koaza_code: Optional[str] = None) -> List[str]:
         """
         Get list of chibans for an Oaza.
 
@@ -208,7 +208,7 @@ class SearchIndex:
         return sorted(node.koaza_map.keys())
 
     def search_chiban(self, query: str, oaza: Optional[str] = None,
-                     limit: int = 50) -> List[SearchResult]:
+                      limit: int = 50) -> List[SearchResult]:
         """
         Search for chibans matching a query.
 
@@ -255,7 +255,7 @@ class SearchIndex:
         return results
 
     def autocomplete_chiban(self, prefix: str, oaza_name: Optional[str] = None,
-                           limit: int = 10) -> List[str]:
+                            limit: int = 10) -> List[str]:
         """
         Autocomplete chiban from prefix.
 
