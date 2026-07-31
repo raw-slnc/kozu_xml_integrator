@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 # Schema version for migration support
-SCHEMA_VERSION = '2.0.0'  # Added reliability tracking for integration v2
+SCHEMA_VERSION = '2.0.1'  # Adds stable XML hash based duplicate protection
 
 
 # SQL statements for table creation
@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS t_schema_info (
 CREATE TABLE IF NOT EXISTS t_xml_meta (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     file_name TEXT NOT NULL UNIQUE,
+    xml_sha256 TEXT,
     map_name TEXT,
     municipality_code TEXT,
     municipality_name TEXT,
@@ -65,6 +66,9 @@ CREATE TABLE IF NOT EXISTS t_xml_meta (
     import_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_date TIMESTAMP
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_t_xml_meta_xml_sha256
+ON t_xml_meta(xml_sha256)
+WHERE xml_sha256 IS NOT NULL;
 SELECT AddGeometryColumn('t_xml_meta', 'geom', 0, 'POLYGON', 'XY');
 
 -- Parcel polygon table
@@ -129,6 +133,7 @@ class XmlMetaRecord:
     """Data class for t_xml_meta record"""
     id: Optional[int] = None
     file_name: str = ''
+    xml_sha256: Optional[str] = None
     map_name: str = ''
     municipality_code: str = ''
     municipality_name: str = ''
@@ -262,6 +267,7 @@ class DatabaseManager:
             cursor = conn.cursor()
 
             # Check and add missing columns to t_xml_meta
+            self._add_column_if_missing(cursor, 't_xml_meta', 'xml_sha256', 'TEXT')
             self._add_column_if_missing(cursor, 't_xml_meta', 'scale_denominator', 'INTEGER')
             self._add_column_if_missing(cursor, 't_xml_meta', 'updated_date', 'TIMESTAMP')
 
@@ -280,6 +286,11 @@ class DatabaseManager:
                 "INSERT OR REPLACE INTO t_schema_info (key, value) VALUES (?, ?)",
                 ('schema_version', SCHEMA_VERSION)
             )
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_t_xml_meta_xml_sha256
+                ON t_xml_meta(xml_sha256)
+                WHERE xml_sha256 IS NOT NULL
+            """)
 
             conn.commit()
 
@@ -329,13 +340,13 @@ class DatabaseManager:
             if record.geom_wkt:
                 cursor.execute("""
                     INSERT INTO t_xml_meta
-                    (file_name, map_name, municipality_code, municipality_name,
+                    (file_name, xml_sha256, map_name, municipality_code, municipality_name,
                      oaza_name, crs_type, geodetic_type, transform_program,
                      point_count, curve_count, fude_count, scale_denominator,
                      status, geom)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GeomFromText(?, 0))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GeomFromText(?, 0))
                 """, (
-                    record.file_name, record.map_name, record.municipality_code,
+                    record.file_name, record.xml_sha256, record.map_name, record.municipality_code,
                     record.municipality_name, record.oaza_name, record.crs_type,
                     record.geodetic_type, record.transform_program,
                     record.point_count, record.curve_count, record.fude_count,
@@ -344,13 +355,13 @@ class DatabaseManager:
             else:
                 cursor.execute("""
                     INSERT INTO t_xml_meta
-                    (file_name, map_name, municipality_code, municipality_name,
+                    (file_name, xml_sha256, map_name, municipality_code, municipality_name,
                      oaza_name, crs_type, geodetic_type, transform_program,
                      point_count, curve_count, fude_count, scale_denominator,
                      status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    record.file_name, record.map_name, record.municipality_code,
+                    record.file_name, record.xml_sha256, record.map_name, record.municipality_code,
                     record.municipality_name, record.oaza_name, record.crs_type,
                     record.geodetic_type, record.transform_program,
                     record.point_count, record.curve_count, record.fude_count,
@@ -824,6 +835,17 @@ class DatabaseManager:
     def file_exists(self, filename: str) -> bool:
         """Check if an XML file has already been imported."""
         return self.get_xml_meta_by_filename(filename) is not None
+
+    def xml_hash_exists(self, xml_sha256: str) -> bool:
+        """Check if XML content hash has already been imported."""
+        if not xml_sha256:
+            return False
+        with self.connection() as conn:
+            cursor = conn.execute(
+                "SELECT 1 FROM t_xml_meta WHERE xml_sha256 = ? LIMIT 1",
+                (xml_sha256,)
+            )
+            return cursor.fetchone() is not None
 
     def update_srid_for_public_crs(self, srid: int = 6676) -> Tuple[int, int]:
         """

@@ -587,6 +587,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             self.db = DatabaseManager(path)
             if create_new:
                 self.db.create_database()
+            self.db.migrate_database()
             self.db_path = path
 
             self.lineEditGlobalDb.setText(str(path))
@@ -749,7 +750,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             def from_xml(data):
                 try:
                     root = ET.fromstring(data)  # nosec B314
-                    el = root.find(f'{{{NS}}}市区町村名')
+                    el = root.find(f'.//{{{NS}}}市区町村名')
                     return el.text.strip() if el is not None and el.text else None
                 except Exception:
                     return None
@@ -767,6 +768,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 return None
 
         renamed, skipped = [], []
+        updated_zips = []
         for zip_path in getattr(self, '_selected_zips', []):
             if not zip_path.exists():
                 skipped.append(zip_path.name)
@@ -774,13 +776,22 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             muni = peek_name(zip_path)
             if not muni or zip_path.stem.endswith(muni):
                 skipped.append(zip_path.name)
+                updated_zips.append(zip_path)
                 continue
             new_path = zip_path.with_name(f"{zip_path.stem}_{muni}{zip_path.suffix}")
             try:
                 zip_path.rename(new_path)
                 renamed.append(f"{zip_path.name} → {new_path.name}")
+                updated_zips.append(new_path)
             except Exception:
                 skipped.append(zip_path.name)
+                updated_zips.append(zip_path)
+
+        self._selected_zips = updated_zips
+        if len(updated_zips) == 1:
+            self.lineEditXmlFolder.setText(str(updated_zips[0]))
+        elif updated_zips:
+            self.lineEditXmlFolder.setText(f"{len(updated_zips)}件のZIPファイル")
 
         if renamed:
             msg = "ZIPをリネームしました:\n" + "\n".join(renamed)

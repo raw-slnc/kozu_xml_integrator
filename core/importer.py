@@ -15,6 +15,7 @@ Supports batch processing with progress reporting.
 from pathlib import Path
 from typing import List, Dict, Optional, Callable, Tuple
 from dataclasses import dataclass
+import hashlib
 import logging
 import tempfile
 import zipfile
@@ -102,7 +103,8 @@ class XmlImporter:
             self._municipality_joiner = SpatialJoiner(municipality_layer, municipality_name_field)
 
     def import_single_file(self, xml_path: Path,
-                           progress_callback: Optional[Callable[[str], None]] = None
+                           progress_callback: Optional[Callable[[str], None]] = None,
+                           source_name: Optional[str] = None
                            ) -> Tuple[bool, int, Optional[str]]:
         """
         Import a single XML file.
@@ -114,11 +116,18 @@ class XmlImporter:
         Returns:
             Tuple of (success, parcel_count, error_message)
         """
-        file_name = xml_path.name
+        file_name = source_name or xml_path.name
+        xml_sha256 = self._compute_xml_hash(xml_path)
 
         # Check if already imported
+        if self.db.xml_hash_exists(xml_sha256):
+            logger.info(f"XML content already imported, skipping: {file_name}")
+            return True, 0, None
         if self.db.file_exists(file_name):
             logger.info(f"File already imported, skipping: {file_name}")
+            return True, 0, None
+        if file_name != xml_path.name and self.db.file_exists(xml_path.name):
+            logger.info(f"Legacy file already imported, skipping: {xml_path.name}")
             return True, 0, None
 
         try:
@@ -163,6 +172,7 @@ class XmlImporter:
 
             meta_record = XmlMetaRecord(
                 file_name=file_name,
+                xml_sha256=xml_sha256,
                 map_name=xml_data.header.map_name,
                 municipality_code=xml_data.header.municipality_code,
                 municipality_name=xml_data.header.municipality_name,
@@ -214,6 +224,14 @@ class XmlImporter:
             logger.error(error_msg, exc_info=True)
             return False, 0, error_msg
 
+    def _compute_xml_hash(self, xml_path: Path) -> str:
+        """Compute a stable SHA-256 hash for duplicate detection."""
+        digest = hashlib.sha256()
+        with open(xml_path, 'rb') as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                digest.update(chunk)
+        return digest.hexdigest()
+
     def import_directory(self, xml_dir: Path,
                          include_subdirs: bool = True,
                          progress_callback: Optional[Callable[[ImportProgress], None]] = None,
@@ -249,9 +267,17 @@ class XmlImporter:
                 oaza_assignments={}
             )
 
-        progress = ImportProgress(total_files=len(xml_files))
+        xml_sources = []
+        for xml_path in xml_files:
+            try:
+                source_name = str(xml_path.relative_to(xml_dir))
+            except ValueError:
+                source_name = xml_path.name
+            xml_sources.append((xml_path, source_name))
 
-        logger.info(f"Found {len(xml_files)} XML files to import")
+        progress = ImportProgress(total_files=len(xml_sources))
+
+        logger.info(f"Found {len(xml_sources)} XML files to import")
 
         files_processed = 0
         files_failed = 0
@@ -259,8 +285,8 @@ class XmlImporter:
         errors = []
 
         # Sequential processing (safer for SQLite)
-        for xml_path in xml_files:
-            progress.current_file = xml_path.name
+        for xml_path, source_name in xml_sources:
+            progress.current_file = source_name
             progress.current_phase = 'processing'
 
             if progress_callback:
@@ -268,7 +294,8 @@ class XmlImporter:
 
             success, parcel_count, error = self.import_single_file(
                 xml_path,
-                lambda msg: None  # Suppress per-file progress
+                lambda msg: None,  # Suppress per-file progress
+                source_name=source_name
             )
 
             if success:
@@ -384,21 +411,25 @@ class XmlImporter:
         """
         start_time = time.time()
 
-        progress = ImportProgress(total_files=len(xml_files))
+        xml_sources = [(xml_path, xml_path.name) for xml_path in xml_files]
+        progress = ImportProgress(total_files=len(xml_sources))
 
         files_processed = 0
         files_failed = 0
         total_parcels = 0
         errors = []
 
-        for xml_path in xml_files:
-            progress.current_file = xml_path.name
+        for xml_path, source_name in xml_sources:
+            progress.current_file = source_name
             progress.current_phase = 'processing'
 
             if progress_callback:
                 progress_callback(progress)
 
-            success, parcel_count, error = self.import_single_file(xml_path)
+            success, parcel_count, error = self.import_single_file(
+                xml_path,
+                source_name=source_name
+            )
 
             if success:
                 files_processed += 1
@@ -417,6 +448,72 @@ class XmlImporter:
         elapsed = time.time() - start_time
 
         # Get Oaza statistics
+        oaza_stats = {}
+        all_meta = self.db.get_all_xml_meta()
+        for meta in all_meta:
+            oaza = meta.get('oaza_name', '')
+            if oaza:
+                oaza_stats[oaza] = oaza_stats.get(oaza, 0) + 1
+
+        return ImportResult(
+            success=files_failed == 0,
+            files_processed=files_processed,
+            files_failed=files_failed,
+            total_parcels=total_parcels,
+            elapsed_seconds=elapsed,
+            errors=errors,
+            oaza_assignments=oaza_stats
+        )
+
+    def import_sources(self, xml_sources: List[Tuple[Path, str]],
+                       progress_callback: Optional[Callable[[ImportProgress], None]] = None
+                       ) -> ImportResult:
+        """
+        Import XML files with explicit source labels.
+
+        Args:
+            xml_sources: List of (xml_path, source_name)
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            ImportResult: Summary of import operation
+        """
+        start_time = time.time()
+
+        progress = ImportProgress(total_files=len(xml_sources))
+        files_processed = 0
+        files_failed = 0
+        total_parcels = 0
+        errors = []
+
+        for xml_path, source_name in xml_sources:
+            progress.current_file = source_name
+            progress.current_phase = 'processing'
+
+            if progress_callback:
+                progress_callback(progress)
+
+            success, parcel_count, error = self.import_single_file(
+                xml_path,
+                source_name=source_name
+            )
+
+            if success:
+                files_processed += 1
+                total_parcels += parcel_count
+            else:
+                files_failed += 1
+                if error:
+                    errors.append(error)
+
+            progress.completed_files += 1
+            progress.parcels_processed = total_parcels
+
+            if progress_callback:
+                progress_callback(progress)
+
+        elapsed = time.time() - start_time
+
         oaza_stats = {}
         all_meta = self.db.get_all_xml_meta()
         for meta in all_meta:
