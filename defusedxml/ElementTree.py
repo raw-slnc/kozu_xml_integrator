@@ -70,7 +70,7 @@ def _get_py3_cls():
 
 
 if PY3:
-    _XMLParser, _iterparse = _get_py3_cls()
+    _XMLParser, _iterparse = _get_py3_cls()  # noqa: F811
 
 
 _sentinel = object()

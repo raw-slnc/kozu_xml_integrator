@@ -27,7 +27,6 @@ from .ElementTree import (
     fromstring,
     iterparse,
     parse,
-    tostring,
     DefusedXMLParser,
     ParseError,
 )
@@ -42,12 +41,12 @@ warnings.warn(
 )
 
 # XMLParse is a typo, keep it for backwards compatibility
-XMLTreeBuilder = XMLParse = XMLParser = DefusedXMLParser
+XMLTreeBuilder = XMLParse = XMLParser = DefusedXMLParser  # noqa: F811
 
-parse, iterparse, fromstring = _generate_etree_functions(
+parse, iterparse, fromstring = _generate_etree_functions(  # noqa: F811
     DefusedXMLParser, _TreeBuilder, _parse, _iterparse
 )
-XML = fromstring
+XML = fromstring  # noqa: F811
 
 __all__ = [
     "ParseError",

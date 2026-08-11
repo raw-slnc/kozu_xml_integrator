@@ -29,6 +29,7 @@ from . import resources  # noqa: F401
 
 from .kozu_main_window import KozuMainWindow
 import os.path
+import sys
 
 
 class KozuXmlIntegrator:
@@ -195,21 +196,16 @@ class KozuXmlIntegrator:
 
         # Create the main window if it doesn't exist
         if self.main_window is None:
+            # On Windows, make the plugin window a true top-level window so it
+            # opens independently from the main QGIS window.
+            parent = None if sys.platform.startswith('win') else self.iface.mainWindow()
             self.main_window = KozuMainWindow(
                 iface=self.iface,
-                parent=self.iface.mainWindow()
+                parent=parent
             )
             self.main_window.destroyed.connect(self._on_main_window_destroyed)
 
-            # 初回起動時: QGISウィンドウと同じモニターの中央に配置
-            self.main_window.show()
-            qgis_geom = self.iface.mainWindow().frameGeometry()
-            self.main_window.move(
-                qgis_geom.x() + (qgis_geom.width() - self.main_window.width()) // 2,
-                qgis_geom.y() + (qgis_geom.height() - self.main_window.height()) // 2
-            )
-        else:
-            self.main_window.show()
+        self.main_window.show()
 
         self.main_window.raise_()
         self.main_window.activateWindow()

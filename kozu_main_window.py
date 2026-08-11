@@ -334,9 +334,6 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._connect_signals()
         self._load_settings()
 
-        # Default position: top-left of screen
-        self.move(0, 0)
-
         # Ctrl+F: toggle fullscreen
         self._fullscreen_shortcut = QShortcut(
             QKeySequence('Ctrl+F'), self
@@ -1131,29 +1128,37 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                 self.lblTileStatus.setText("任意座標系データ - タイル表示不可")
                 self._update_crs_label_with_override()
 
-            # 1. 先に描画範囲を確定させる (QGIS 3.44系でのタイル描画漏れ対策)
-            # レイヤーを追加する前にキャンバスの状態を整えることで、XYZタイルの初期リクエストを確実にします
-            if features:
-                extent = self.preview_layer.extent()
-                extent.scale(1.1)
-                self.map_canvas.setExtent(extent)
-                self._update_zoom_limit()
+            old_scale_sync_guard = self._scale_sync_guard
+            old_pan_sync_guard = self._pan_sync_guard
+            self._scale_sync_guard = True
+            self._pan_sync_guard = True
+            try:
+                # 1. 先に描画範囲を確定させる (QGIS 3.44系でのタイル描画漏れ対策)
+                # レイヤーを追加する前にキャンバスの状態を整えることで、XYZタイルの初期リクエストを確実にします
+                if features:
+                    self._show_preview_full_extent()
+                    self._update_zoom_limit()
 
-            # 2. 公共座標系の場合、チェックが入っていればレイヤーを生成する
-            # update_canvas=False を指定し、無駄な再描画を抑えつつ最後に一括更新します
-            if has_public:
-                if self.chkShowTile.isChecked():
-                    self._load_tile_layer(update_canvas=False)
-                if self.chkOverlayTile.isChecked():
-                    self._load_overlay_tile(update_canvas=False)
+                # 2. 公共座標系の場合、チェックが入っていればレイヤーを生成する
+                # update_canvas=False を指定し、無駄な再描画を抑えつつ最後に一括更新します
+                if has_public:
+                    if self.chkShowTile.isChecked():
+                        self._load_tile_layer(update_canvas=False)
+                    if self.chkOverlayTile.isChecked():
+                        self._load_overlay_tile(update_canvas=False)
 
-            # 3. 最後にまとめてレイヤーをセットし、強制再描画を行う
-            self._update_canvas_layers()
-            self._update_export_gpkg_state()
-            self.map_canvas.refresh()
-            # Pan main canvas to preview center (public coord only)
-            if has_public and features:
-                self._pan_main_to_preview_center()
+                # 3. 最後にまとめてレイヤーをセットし、強制再描画を行う
+                self._update_canvas_layers()
+                if features:
+                    self._show_preview_full_extent()
+                self._update_export_gpkg_state()
+                self.map_canvas.refresh()
+                # Sync main canvas to the same full extent (public coord only)
+                if has_public and features:
+                    self._show_main_full_extent_from_preview()
+            finally:
+                self._scale_sync_guard = old_scale_sync_guard
+                self._pan_sync_guard = old_pan_sync_guard
 
             # Always update chiban range status label; also do oaza sync if main select is active
             self._zoom_main_to_oaza()
@@ -1327,6 +1332,20 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         if self.preview_layer:
             self._apply_labels_to_layer()
             self.map_canvas.refresh()
+
+    def _show_preview_full_extent(self, margin: float = 1.1):
+        """Show the full preview extent centered in the canvas."""
+        if not self.preview_layer or self.preview_layer.featureCount() == 0:
+            return
+
+        extent = QgsRectangle(self.preview_layer.extent())
+        if extent.isEmpty():
+            return
+
+        extent.scale(margin)
+        self._scale_guard = True
+        self.map_canvas.setExtent(extent)
+        self._scale_guard = False
 
     def _update_zoom_limit(self):
         """Recalculate zoom-out limit from the current preview layer extent."""
@@ -1896,6 +1915,30 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         ))
         main_canvas.refresh()
 
+    def _show_main_full_extent_from_preview(self, margin: float = 1.1):
+        """Show the preview full extent on the main canvas (public coord only)."""
+        if not self.preview_layer or self._is_arbitrary:
+            return
+
+        extent = QgsRectangle(self.preview_layer.extent())
+        if extent.isEmpty():
+            return
+
+        extent.scale(margin)
+        src_crs = self._PREVIEW_CRS
+        main_canvas = self.iface.mapCanvas()
+        dst_crs = main_canvas.mapSettings().destinationCrs()
+        if src_crs != dst_crs:
+            transform = QgsCoordinateTransform(src_crs, dst_crs, QgsProject.instance())
+            extent = transform.transformBoundingBox(extent)
+
+        self._pan_sync_guard = True
+        try:
+            main_canvas.setExtent(extent)
+            main_canvas.refresh()
+        finally:
+            self._pan_sync_guard = False
+
     def _zoom_main_to_oaza(self):
         """Update lblLinkStatus with the chiban range of the current preview XML."""
         if not self.preview_layer:
@@ -2229,13 +2272,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self._update_canvas_layers()
         self.map_canvas.refresh()
 
-        # Sync preview scale to main canvas (initial sync after georef)
-        main_scale = self.iface.mapCanvas().scale()
-        self._scale_sync_guard = True
-        self._scale_guard = True
-        self.map_canvas.zoomScale(main_scale)
-        self._scale_guard = False
-        self._scale_sync_guard = False
+        # Keep the full preview extent chosen above.
+        # Syncing to the main canvas scale here would reapply the previous
+        # arbitrary-coordinate view scale and break the initial public
+        # coordinate full-view display.
 
     @staticmethod
     def _transform_geometry_wkt(wkt: str, scale: float, dx: float, dy: float) -> str:
