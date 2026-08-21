@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from qgis.PyQt import uic
-from qgis.PyQt.QtCore import Qt, QSettings, pyqtSignal, QVariant, QPointF, QRectF, QMarginsF, QEvent
+from qgis.PyQt.QtCore import Qt, QSettings, pyqtSignal, QMetaType, QPointF, QRectF, QMarginsF, QEvent
 from qgis.PyQt.QtWidgets import (
     QMainWindow, QFileDialog, QMessageBox, QTreeWidgetItem, QShortcut,
     QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QWidget,
@@ -35,7 +35,7 @@ from qgis.core import (
 from qgis.gui import QgsMapCanvas, QgsMapTool, QgsHighlight, QgsVertexMarker
 
 from .core import DatabaseManager
-import sip  # type: ignore[import-untyped]
+from qgis.PyQt import sip
 import logging
 
 logger = logging.getLogger(__name__)
@@ -85,13 +85,13 @@ class PreviewClickTool(QgsMapTool):
 
         # Snap marker: follows mouse, snaps to crosshair center
         self._snap_marker = QgsVertexMarker(canvas)
-        self._snap_marker.setIconType(QgsVertexMarker.ICON_CROSS)
+        self._snap_marker.setIconType(QgsVertexMarker.IconType.ICON_CROSS)
         self._snap_marker.setColor(QColor(255, 0, 0, 200))
         self._snap_marker.setIconSize(12)
         self._snap_marker.setPenWidth(2)
         self._snap_marker.hide()
 
-        self.setCursor(Qt.OpenHandCursor)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
 
     def _canvas_center_px(self):
         """Return canvas center in pixel coordinates."""
@@ -108,10 +108,10 @@ class PreviewClickTool(QgsMapTool):
         self._last_pos = event.pos()
         self._dragging = False
         self._ctrl_dragging = False
-        if event.modifiers() & Qt.ControlModifier:
-            self.setCursor(Qt.SizeAllCursor)
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self.setCursor(Qt.CursorShape.SizeAllCursor)
         else:
-            self.setCursor(Qt.ClosedHandCursor)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def canvasMoveEvent(self, event):
         # Update snap marker when not pressing (hover)
@@ -132,7 +132,7 @@ class PreviewClickTool(QgsMapTool):
         delta = event.pos() - self._start_pos
         if not self._dragging and abs(delta.x()) + abs(delta.y()) > DRAG_THRESHOLD:
             self._dragging = True
-            self._ctrl_dragging = bool(event.modifiers() & Qt.ControlModifier)
+            self._ctrl_dragging = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
             self._snap_marker.hide()
 
         if self._dragging:
@@ -170,7 +170,7 @@ class PreviewClickTool(QgsMapTool):
         self._dragging = False
         self._ctrl_dragging = False
         self._snap_marker.show()
-        self.setCursor(Qt.OpenHandCursor)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
 
     def activate(self):
         super().activate()
@@ -193,13 +193,13 @@ class MainSelectTool(QgsMapTool):
         self._start_pos = None
         self._last_pos = None
         self._dragging = False
-        self.setCursor(Qt.CrossCursor)
+        self.setCursor(Qt.CursorShape.CrossCursor)
 
     def canvasPressEvent(self, event):
         self._start_pos = event.pos()
         self._last_pos = event.pos()
         self._dragging = False
-        self.setCursor(Qt.ClosedHandCursor)
+        self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def canvasMoveEvent(self, event):
         if self._start_pos is None:
@@ -228,23 +228,23 @@ class MainSelectTool(QgsMapTool):
         self._start_pos = None
         self._last_pos = None
         self._dragging = False
-        self.setCursor(Qt.CrossCursor)
+        self.setCursor(Qt.CursorShape.CrossCursor)
 
     def keyPressEvent(self, event):
         extent = self.canvas().extent()
         dx = extent.width() * self.PAN_FRACTION
         dy = extent.height() * self.PAN_FRACTION
         key = event.key()
-        if key == Qt.Key_Left:
+        if key == Qt.Key.Key_Left:
             extent.setXMinimum(extent.xMinimum() - dx)
             extent.setXMaximum(extent.xMaximum() - dx)
-        elif key == Qt.Key_Right:
+        elif key == Qt.Key.Key_Right:
             extent.setXMinimum(extent.xMinimum() + dx)
             extent.setXMaximum(extent.xMaximum() + dx)
-        elif key == Qt.Key_Up:
+        elif key == Qt.Key.Key_Up:
             extent.setYMinimum(extent.yMinimum() + dy)
             extent.setYMaximum(extent.yMaximum() + dy)
-        elif key == Qt.Key_Down:
+        elif key == Qt.Key.Key_Down:
             extent.setYMinimum(extent.yMinimum() - dy)
             extent.setYMaximum(extent.yMaximum() - dy)
         else:
@@ -258,12 +258,12 @@ class CrosshairOverlay(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         pen = QPen(QColor(0, 0, 0, 160))
         pen.setWidthF(0.5)
         painter.setPen(pen)
@@ -383,15 +383,15 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
     def eventFilter(self, obj, event):
         """Intercept wheel events on preview canvas for center-snap zoom,
         and show a hover hint about Ctrl+drag position adjustment."""
-        if obj is self.map_canvas.viewport() and event.type() == QEvent.Enter:
+        if obj is self.map_canvas.viewport() and event.type() == QEvent.Type.Enter:
             self._lblPreviewHint.setText(PREVIEW_POSITION_HINT)
             return False
-        if obj is self.map_canvas.viewport() and event.type() == QEvent.Leave:
+        if obj is self.map_canvas.viewport() and event.type() == QEvent.Type.Leave:
             self._lblPreviewHint.setText("")
             return False
 
         if (obj is self.map_canvas.viewport()
-                and event.type() == QEvent.Wheel
+                and event.type() == QEvent.Type.Wheel
                 and self._preview_tool._snapped):
             # Zoom centered on crosshair (canvas center) instead of cursor
             delta = event.angleDelta().y()
@@ -455,7 +455,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         # Mutual display options
         self.chkMutualEnabled.stateChanged.connect(
-            lambda state: self.chkMutualNear.setEnabled(state == Qt.Checked)
+            lambda state: self.chkMutualNear.setEnabled(state == Qt.CheckState.Checked)
         )
 
         # Clear highlights when match level options change
@@ -863,8 +863,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
                     str(fude_count or 0),
                     crs_short
                 ])
-                item.setData(0, Qt.UserRole, xml_id)
-                item.setData(1, Qt.UserRole, scale)  # Store scale as int
+                item.setData(0, Qt.ItemDataRole.UserRole, xml_id)
+                item.setData(1, Qt.ItemDataRole.UserRole, scale)  # Store scale as int
                 self.treeXmlFiles.addTopLevelItem(item)
 
             # Auto-resize columns
@@ -881,8 +881,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             return
 
         item = items[0]
-        xml_meta_id = item.data(0, Qt.UserRole)
-        scale = item.data(1, Qt.UserRole)
+        xml_meta_id = item.data(0, Qt.ItemDataRole.UserRole)
+        scale = item.data(1, Qt.ItemDataRole.UserRole)
         map_name = item.text(0)
 
         self._current_xml_meta_id = xml_meta_id
@@ -908,7 +908,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         tree_items = {}  # xml_meta_id -> QTreeWidgetItem
         for i in range(root.childCount()):
             item = root.child(i)
-            xml_id = item.data(0, Qt.UserRole)
+            xml_id = item.data(0, Qt.ItemDataRole.UserRole)
             if xml_id is not None:
                 tree_items[xml_id] = item
 
@@ -1063,12 +1063,12 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             provider = self.preview_layer.dataProvider()
 
             provider.addAttributes([
-                QgsField("id", QVariant.Int),
-                QgsField("oaza_name", QVariant.String),
-                QgsField("chiban", QVariant.String),
-                QgsField("coord_type", QVariant.String),
-                QgsField("area_sqm", QVariant.Double),
-                QgsField("est_area", QVariant.Double),
+                QgsField("id", QMetaType.Type.Int),
+                QgsField("oaza_name", QMetaType.Type.QString),
+                QgsField("chiban", QMetaType.Type.QString),
+                QgsField("coord_type", QMetaType.Type.QString),
+                QgsField("area_sqm", QMetaType.Type.Double),
+                QgsField("est_area", QMetaType.Type.Double),
             ])
             self.preview_layer.updateFields()
 
@@ -1205,10 +1205,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             from qgis.core import Qgis
             settings.placement = Qgis.LabelPlacement.OverPoint
         except (AttributeError, ImportError):
-            settings.placement = QgsPalLayerSettings.OverPoint
+            settings.placement = QgsPalLayerSettings.Placement.OverPoint
 
         text_format = QgsTextFormat()
-        text_format.setSize(7)
+        text_format.setSize(6)
         text_format.setColor(QColor(0, 0, 100))
 
         buffer_settings = QgsTextBufferSettings()
@@ -1280,7 +1280,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
     def _on_scale_override_changed(self, state, source_scale, target_scale, sibling_chk):
         """Handle scale override checkbox toggle with mutual exclusivity."""
         # Mutual exclusivity: uncheck sibling when checking this one
-        if state == Qt.Checked and sibling_chk is not None and sibling_chk.isChecked():
+        if state == Qt.CheckState.Checked and sibling_chk is not None and sibling_chk.isChecked():
             sibling_chk.blockSignals(True)
             sibling_chk.setChecked(False)
             sibling_chk.blockSignals(False)
@@ -1478,7 +1478,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         from .ui.link_settings_dialog import LinkSettingsDialog
 
         dlg = LinkSettingsDialog(self, self._link_config)
-        if dlg.exec_() == LinkSettingsDialog.Accepted:
+        if dlg.exec() == LinkSettingsDialog.DialogCode.Accepted:
             config = dlg.get_config()
             if config:
                 self._apply_link_config(config)
@@ -1876,7 +1876,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
     def _on_enable_main_select(self, state: int):
         """Toggle main window selection mode."""
-        if state == Qt.Checked:
+        if state == Qt.CheckState.Checked:
             if not self._link_config:
                 self.chkEnableMainSelect.setChecked(False)
                 return
@@ -1992,7 +1992,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         tree_xml_items: dict = {}
         for i in range(root.childCount()):
             item = root.child(i)
-            xml_id = item.data(0, Qt.UserRole)
+            xml_id = item.data(0, Qt.ItemDataRole.UserRole)
             if xml_id is not None and xml_id != current_xml_id:
                 tree_xml_items[xml_id] = item
 
@@ -2437,7 +2437,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
     def _on_tile_toggle(self, state: int):
         """Handle tile visibility toggle."""
-        show_tile = state == Qt.Checked
+        show_tile = state == Qt.CheckState.Checked
         self.comboTileSource.setEnabled(show_tile)
 
         if show_tile:
@@ -2494,7 +2494,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
     def _on_overlay_tile_toggle(self, state: int):
         """Handle overlay tile visibility toggle."""
-        show = state == Qt.Checked
+        show = state == Qt.CheckState.Checked
         self.comboOverlaySource.setEnabled(show)
         if show:
             self._load_overlay_tile()
@@ -2685,14 +2685,14 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         form.addRow("大字名:", edit_oaza)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dlg
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, dlg
         )
-        buttons.button(QDialogButtonBox.Ok).setText("出力")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("出力")
         buttons.accepted.connect(dlg.accept)
         buttons.rejected.connect(dlg.reject)
         form.addRow(buttons)
 
-        if dlg.exec_() != QDialog.Accepted:
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
         title = edit_title.text().strip()
@@ -2713,10 +2713,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         from qgis.PyQt.QtCore import QSize
 
         # --- Page setup: A4 Landscape ---
-        page_size = QPageSize(QPageSize.A4)
+        page_size = QPageSize(QPageSize.PageSizeId.A4)
         margin = QMarginsF(15, 15, 15, 15)  # mm
-        layout = QPageLayout(page_size, QPageLayout.Landscape, margin,
-                             QPageLayout.Millimeter)
+        layout = QPageLayout(page_size, QPageLayout.Orientation.Landscape, margin,
+                             QPageLayout.Unit.Millimeter)
 
         try:
             from qgis.PyQt.QtGui import QPdfWriter
@@ -2762,16 +2762,16 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             # Title (left)
             if title:
                 painter.drawText(draw_left, draw_top, draw_w // 2, header_h,
-                                 Qt.AlignLeft | Qt.AlignVCenter, title)
+                                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, title)
             # Scale (center)
             if scale_text:
                 painter.drawText(draw_left, draw_top, draw_w, header_h,
-                                 Qt.AlignHCenter | Qt.AlignVCenter,
+                                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                                  f"縮尺: {scale_text}")
             # Oaza (right)
             if oaza_text:
                 painter.drawText(draw_left, draw_top, draw_w, header_h,
-                                 Qt.AlignRight | Qt.AlignVCenter,
+                                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                                  f"大字: {oaza_text}")
 
             # --- Map area ---
@@ -2784,7 +2784,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             line_w = 0.3 * dpi / 72.0  # 0.3pt in device pixels
             pen03.setWidthF(line_w)
             painter.setPen(pen03)
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
 
             # Outer border
             painter.drawRect(map_rect)
@@ -2819,7 +2819,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
             # Redraw borders on top (in case map bleeds into border area)
             painter.setPen(pen03)
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(map_rect)
             painter.drawRect(inner_rect)
 
@@ -2929,7 +2929,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         fill_layer.setFillColor(QColor(0, 255, 0, 51))  # green, 20% opacity (51/255)
         fill_layer.setStrokeColor(QColor(255, 0, 0))
         fill_layer.setStrokeWidth(0.4)
-        fill_layer.setStrokeWidthUnit(QgsUnitTypes.RenderPoints)
+        fill_layer.setStrokeWidthUnit(QgsUnitTypes.RenderUnit.RenderPoints)
 
         symbol = QgsFillSymbol()
         symbol.changeSymbolLayer(0, fill_layer)
@@ -2955,16 +2955,16 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
 
         # Define output fields (with scale info)
         fields = QgsFields()
-        fields.append(QgsField("oaza_name", QVariant.String))
-        fields.append(QgsField("chiban", QVariant.String))
-        fields.append(QgsField("est_area", QVariant.Double))
-        fields.append(QgsField("scale", QVariant.Int))
+        fields.append(QgsField("oaza_name", QMetaType.Type.QString))
+        fields.append(QgsField("chiban", QMetaType.Type.QString))
+        fields.append(QgsField("est_area", QMetaType.Type.Double))
+        fields.append(QgsField("scale", QMetaType.Type.Int))
 
         writer = QgsVectorFileWriter(
             path, "UTF-8", fields, self.preview_layer.wkbType(),
             crs, "GPKG"
         )
-        if writer.hasError() != QgsVectorFileWriter.NoError:
+        if writer.hasError() != QgsVectorFileWriter.WriterError.NoError:
             raise RuntimeError(writer.errorMessage())
 
         export_all = not self._matched_preview_fids

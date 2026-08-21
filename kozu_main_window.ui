@@ -417,7 +417,7 @@
               <item>
                <widget class="QLineEdit" name="lineEditXmlSearch">
                 <property name="placeholderText">
-                 <string>地図名で検索...</string>
+                 <string>地番で検索 ※小文字/例：1198-1</string>
                 </property>
                </widget>
               </item>

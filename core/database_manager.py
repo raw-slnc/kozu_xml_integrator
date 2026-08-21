@@ -28,7 +28,7 @@ from qgis.core import (
     QgsField,
     QgsCoordinateReferenceSystem,
 )
-from PyQt5.QtCore import QVariant
+from qgis.PyQt.QtCore import QMetaType
 
 logger = logging.getLogger(__name__)
 
@@ -753,14 +753,14 @@ class DatabaseManager:
 
         # Create memory layer
         fields = QgsFields()
-        fields.append(QgsField('id', QVariant.Int))
-        fields.append(QgsField('fude_id', QVariant.String))
-        fields.append(QgsField('oaza_code', QVariant.String))
-        fields.append(QgsField('oaza_name', QVariant.String))
-        fields.append(QgsField('chiban', QVariant.String))
-        fields.append(QgsField('coord_type', QVariant.String))
-        fields.append(QgsField('file_name', QVariant.String))
-        fields.append(QgsField('crs_type', QVariant.String))
+        fields.append(QgsField('id', QMetaType.Type.Int))
+        fields.append(QgsField('fude_id', QMetaType.Type.QString))
+        fields.append(QgsField('oaza_code', QMetaType.Type.QString))
+        fields.append(QgsField('oaza_name', QMetaType.Type.QString))
+        fields.append(QgsField('chiban', QMetaType.Type.QString))
+        fields.append(QgsField('coord_type', QMetaType.Type.QString))
+        fields.append(QgsField('file_name', QMetaType.Type.QString))
+        fields.append(QgsField('crs_type', QMetaType.Type.QString))
 
         # Create features
         features = []
@@ -784,11 +784,11 @@ class DatabaseManager:
         options.fileEncoding = 'UTF-8'
 
         writer = QgsVectorFileWriter.create(
-            str(gpkg_path), fields, QgsWkbTypes.Polygon,
+            str(gpkg_path), fields, QgsWkbTypes.Type.Polygon,
             crs, QgsCoordinateTransformContext(), options
         )
 
-        if writer.hasError() != QgsVectorFileWriter.NoError:
+        if writer.hasError() != QgsVectorFileWriter.WriterError.NoError:
             logger.error(f"Error creating GeoPackage: {writer.errorMessage()}")
             return False
 

@@ -1,5 +1,0 @@
-<RCC>
-    <qresource prefix="/plugins/kozu_xml_integrator" >
-        <file>icon.png</file>
-    </qresource>
-</RCC>

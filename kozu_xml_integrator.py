@@ -24,8 +24,6 @@
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
-# Initialize Qt resources from file resources.py (side-effect import: registers icons etc.)
-from . import resources  # noqa: F401
 
 from .kozu_main_window import KozuMainWindow
 import os.path
