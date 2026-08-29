@@ -288,6 +288,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self.iface = iface
         self.db_path: Optional[Path] = None
         self.db: Optional[DatabaseManager] = None
+        self._db_mode: Optional[str] = None  # 'browse' (閲覧) or 'edit' (追加/インポート可)
+        self._pre_edit_snapshot: Optional[tuple] = None  # 追加モード開始前の(db, db_path, mode)
 
         # Keep XML tree selection highlight active even when focus moves to map canvas
         self.treeXmlFiles.setStyleSheet("""
@@ -548,6 +550,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         settings.beginGroup('KozuXmlIntegrator')
         if self.db_path:
             settings.setValue('last_database', str(self.db_path))
+        else:
+            settings.remove('last_database')
         settings.setValue('overlay_source_name', self.comboOverlaySource.currentText())
         settings.setValue('overlay_tile_enabled', self.chkOverlayTile.isChecked())
         settings.setValue('overlay_tile_opacity', self.spinOverlayOpacity.value())
@@ -557,38 +561,71 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
     # ─── Database ───────────────────────────────────────────
 
     def _on_open_database(self):
-        """Handle open existing database."""
+        """Handle open existing database (browse-only mode)."""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "データベースを開く",
+            "データベースを開く（閲覧）",
             str(Path.home()),
-            "SQLite Database (*.sqlite *.db);;GeoPackage (*.gpkg);;All Files (*.*)"
+            "SQLite Database (*.sqlite *.db);;All Files (*.*)"
         )
         if file_path:
-            self._open_database(Path(file_path))
+            self._open_database(Path(file_path), mode='browse')
 
     def _on_new_database(self):
-        """Handle create new database."""
+        """Handle create new / add to existing database.
+
+        既存ファイルを選んだ場合は削除せずそのDBを開き、追加取り込み
+        できる状態（editモード）にする。新規ファイル名ならDBを新規作成する。
+        追加モード中はこのボタン自体が「キャンセル」として機能する。
+        """
+        if self._pre_edit_snapshot is not None:
+            self._on_cancel_edit_mode()
+            return
+
+        QMessageBox.information(
+            self, "新規作成 / DB追加",
+            "既存ファイルを選択した場合には既存DBへ追加インポートする扱いになります。"
+        )
+
         file_path, _ = QFileDialog.getSaveFileName(
             self,
-            "新規データベースを作成",
+            "新規作成 / DB追加",
             str(Path.home() / "kozu_data.sqlite"),
             "SQLite Database (*.sqlite);;All Files (*.*)"
         )
         if file_path:
             path = Path(file_path)
-            if path.exists():
-                path.unlink()
-            self._open_database(path, create_new=True)
+            self._pre_edit_snapshot = (self.db, self.db_path, self._db_mode)
+            self._open_database(path, create_new=not path.exists(), mode='edit')
 
-    def _open_database(self, path: Path, create_new: bool = False):
-        """Open or create a database."""
+    def _on_cancel_edit_mode(self):
+        """追加モードをキャンセルし、ボタンを押す前の状態に戻す。"""
+        if self._pre_edit_snapshot is None:
+            return
+        self.db, self.db_path, self._db_mode = self._pre_edit_snapshot
+        self._pre_edit_snapshot = None
+
+        self.lineEditGlobalDb.setText(str(self.db_path) if self.db_path else '')
+        self._update_db_info()
+        self._update_ui_state()
+        self._populate_oaza_combo()
+        self._save_settings()
+
+    def _open_database(self, path: Path, create_new: bool = False, mode: str = 'browse'):
+        """Open or create a database.
+
+        Args:
+            create_new: DBファイルを新規作成するか
+            mode: 'browse'（閲覧専用・インポートタブ無効）または
+                  'edit'（インポート可能）
+        """
         try:
             self.db = DatabaseManager(path)
             if create_new:
                 self.db.create_database()
             self.db.migrate_database()
             self.db_path = path
+            self._db_mode = mode
 
             self.lineEditGlobalDb.setText(str(path))
             self._update_db_info()
@@ -597,7 +634,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             self._save_settings()
             self.database_changed.emit(str(path))
 
-            logger.info(f"Database opened: {path}")
+            logger.info(f"Database opened: {path} (mode={mode})")
 
         except Exception as e:
             logger.error(f"Failed to open database: {e}")
@@ -621,10 +658,27 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
     def _update_ui_state(self):
         """Update UI element states based on current data."""
         has_db = self.db is not None
+        is_edit_mode = has_db and self._db_mode == 'edit'
 
-        # Import tab
+        # Import tab: 閲覧モード（または未選択）では丸ごと無効化
+        self.tabImport.setEnabled(is_edit_mode)
         self.btnStartImport.setEnabled(
-            has_db and self.lineEditXmlFolder.text() != ''
+            is_edit_mode and self.lineEditXmlFolder.text() != ''
+        )
+
+        # DB mode indicator
+        if not has_db:
+            self.lblDbMode.setText('')
+        elif is_edit_mode:
+            self.lblDbMode.setText('● 追加モード（インポート可）')
+            self.lblDbMode.setStyleSheet('font-size: 11px; font-weight: bold; color: #e65100;')
+        else:
+            self.lblDbMode.setText('● 閲覧中')
+            self.lblDbMode.setStyleSheet('font-size: 11px; font-weight: bold; color: #2e7d32;')
+
+        # 追加モード中は「新規作成 / DB追加」ボタン自体をキャンセルとして機能させる
+        self.btnNewDb.setText(
+            'キャンセル' if self._pre_edit_snapshot is not None else '新規作成 / DB追加'
         )
 
         # Preview tab
@@ -717,6 +771,8 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self.progressBar.setValue(100)
         self.lblProgressStatus.setText("完了")
         self.btnStartImport.setText("インポート開始")
+        self._db_mode = 'browse'  # インポート完了後は自動的に閲覧モードへ戻す
+        self._pre_edit_snapshot = None  # 取り込み済みのためキャンセル不可にする
         self._update_ui_state()
         self._update_db_info()
         self._populate_oaza_combo()
@@ -740,32 +796,25 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         QMessageBox.critical(self, "エラー", f"インポート中にエラーが発生しました:\n{error_msg}")
 
     def _rename_zips_with_municipality(self):
-        """ZIPファイルに行政区画名を追記してリネームする。"""
-        import io
-        import zipfile
-        import xml.etree.ElementTree as ET  # nosec B405
-        NS = 'http://www.moj.go.jp/MINJI/tizuxml'
+        """ZIPファイルに行政区画名を追記してリネームする。
 
-        def peek_name(zip_path):
-            def from_xml(data):
-                try:
-                    root = ET.fromstring(data)  # nosec B314
-                    el = root.find(f'.//{{{NS}}}市区町村名')
-                    return el.text.strip() if el is not None and el.text else None
-                except Exception:
-                    return None
-            try:
-                with zipfile.ZipFile(zip_path) as outer:
-                    for name in outer.namelist():
-                        if name.lower().endswith('.xml'):
-                            return from_xml(outer.read(name))
-                        if name.lower().endswith('.zip'):
-                            with zipfile.ZipFile(io.BytesIO(outer.read(name))) as inner:
-                                for iname in inner.namelist():
-                                    if iname.lower().endswith('.xml'):
-                                        return from_xml(inner.read(iname))
-            except Exception:
+        ZIPを再展開してXMLを読み直すのではなく、直前のインポートでDBに
+        保存済みの市区町村名（t_xml_meta.municipality_name）を参照する。
+        """
+
+        def lookup_municipality(zip_path):
+            if not self.db:
                 return None
+            prefix = f"{zip_path.name}/"
+            with self.db.connection() as conn:
+                cursor = conn.execute(
+                    "SELECT DISTINCT municipality_name FROM t_xml_meta "
+                    "WHERE substr(file_name, 1, ?) = ? AND municipality_name != ''",
+                    (len(prefix), prefix)
+                )
+                names = [row[0] for row in cursor.fetchall()]
+            # 複数市区町村が混在するZIPは誤リネーム防止のため対象外とする
+            return names[0] if len(names) == 1 else None
 
         renamed, skipped = [], []
         updated_zips = []
@@ -773,7 +822,7 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             if not zip_path.exists():
                 skipped.append(zip_path.name)
                 continue
-            muni = peek_name(zip_path)
+            muni = lookup_municipality(zip_path)
             if not muni or zip_path.stem.endswith(muni):
                 skipped.append(zip_path.name)
                 updated_zips.append(zip_path)

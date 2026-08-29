@@ -24,6 +24,8 @@ from ..core import (
     ImportProgress,
     ImportResult,
     SearchIndex,
+    safe_extract_zip,
+    UnsafeZipError,
 )
 
 logger = logging.getLogger(__name__)
@@ -323,8 +325,8 @@ class ImportWorker(QObject):
                             source_prefix=zip_path.name
                         )
                     )
-                except zipfile.BadZipFile:
-                    logger.warning(f"Skipping bad ZIP: {zip_path.name}")
+                except (zipfile.BadZipFile, UnsafeZipError) as e:
+                    logger.warning(f"Skipping bad/unsafe ZIP: {zip_path.name} ({e})")
                     bad_zips.append(zip_path.name)
 
             if not xml_sources:
@@ -353,7 +355,7 @@ class ImportWorker(QObject):
         xml_sources = []
 
         with zipfile.ZipFile(zip_path, 'r') as zf:
-            zf.extractall(extract_root)
+            safe_extract_zip(zf, extract_root)
 
         for xml_path in extract_root.rglob('*.xml'):
             rel_path = xml_path.relative_to(extract_root).as_posix()

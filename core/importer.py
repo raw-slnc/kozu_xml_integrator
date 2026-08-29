@@ -28,6 +28,7 @@ from .geometry_builder import GeometryBuilder
 from .database_manager import DatabaseManager, XmlMetaRecord, FudePolyRecord
 from .spatial_join import SpatialJoiner, load_admin_layer, normalize_municipality_name
 from .search_index import SearchIndex
+from .safe_zip import safe_extract_zip, UnsafeZipError
 
 logger = logging.getLogger(__name__)
 
@@ -365,17 +366,28 @@ class XmlImporter:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
-            with zipfile.ZipFile(zip_path, 'r') as zf:
-                zf.extractall(tmp_path)
+            try:
+                with zipfile.ZipFile(zip_path, 'r') as zf:
+                    safe_extract_zip(zf, tmp_path)
+            except UnsafeZipError as e:
+                return ImportResult(
+                    success=False,
+                    files_processed=0,
+                    files_failed=0,
+                    total_parcels=0,
+                    elapsed_seconds=0,
+                    errors=[f"安全性チェックに失敗したZIPファイルです: {zip_path.name} ({e})"],
+                    oaza_assignments={}
+                )
 
             # 内側のZIPも展開する（2重構造対応）
             for inner_zip in tmp_path.rglob('*.zip'):
                 try:
                     with zipfile.ZipFile(inner_zip, 'r') as izf:
-                        izf.extractall(inner_zip.parent)
+                        safe_extract_zip(izf, inner_zip.parent)
                     inner_zip.unlink()
-                except zipfile.BadZipFile:
-                    logger.warning(f"Skipping bad inner ZIP: {inner_zip.name}")
+                except (zipfile.BadZipFile, UnsafeZipError):
+                    logger.warning(f"Skipping bad/unsafe inner ZIP: {inner_zip.name}")
 
             xml_files = list(tmp_path.rglob('*.xml'))
             if not xml_files:

@@ -52,6 +52,11 @@ from .importer import (
     create_database_and_import,
 )
 
+from .safe_zip import (
+    safe_extract_zip,
+    UnsafeZipError,
+)
+
 __all__ = [
     # xml_parser
     'KozuXmlParser',
@@ -82,4 +87,7 @@ __all__ = [
     'ImportProgress',
     'ImportResult',
     'create_database_and_import',
+    # safe_zip
+    'safe_extract_zip',
+    'UnsafeZipError',
 ]
