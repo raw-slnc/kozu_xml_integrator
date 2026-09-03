@@ -283,6 +283,38 @@
              </layout>
             </widget>
            </item>
+           <!-- Forest planning map cross-reference notes -->
+           <item>
+            <widget class="QgsCollapsibleGroupBox" name="groupCrossRefNotes">
+             <property name="title">
+              <string>森林計画図との照合について</string>
+             </property>
+             <property name="collapsed">
+              <bool>true</bool>
+             </property>
+             <layout class="QVBoxLayout" name="crossRefNotesLayout">
+              <item>
+               <widget class="QLabel" name="lblCrossRefNotes">
+                <property name="text">
+                 <string>森林計画図・森林簿と公図の市町村・大字は、表記の違いで一致しないことがあります。
+
+・合併前の旧市町村：合併で他市に編入された区域が森林計画図側で旧市町村名のまま表記されることがあります。「旧」や「、／※／（…）」は外して照合しますが、旧町村名が現行市名と別語だと一致しません。例：静岡市に編入された「旧井川村」は「井川村」となり「静岡市」と一致しない。
+
+・政令指定都市の区名：大字に区名が付くことがあります（公図側は区名なし）。完全一致しないときは先頭の区名を外して再照合します。例：「葵区井川」⇔ 公図「井川」。
+
+・同名大字：別の市町村に同じ大字名があり一部だけ取り込んでいる場合、地番検索が別市町村の筆に当たることがあります。対象市町村のXMLを取り込んでください。</string>
+                </property>
+                <property name="wordWrap">
+                 <bool>true</bool>
+                </property>
+                <property name="styleSheet">
+                 <string>color: #444444; font-size: 10px;</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
            <!-- Developer Credit -->
            <item>
             <widget class="QLabel" name="lblDeveloperCredit">
@@ -954,6 +986,14 @@
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>QgsCollapsibleGroupBox</class>
+   <extends>QGroupBox</extends>
+   <header>qgis.gui</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

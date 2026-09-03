@@ -29,33 +29,39 @@ logger = logging.getLogger(__name__)
 
 def normalize_municipality_name(name: str) -> str:
     """
-    Normalize municipality name by stripping prefecture/county prefix.
+    Normalize municipality name by stripping prefecture/county prefixes and
+    forest-register style "former municipality" decoration.
 
     Examples:
         "賀茂郡西伊豆町" -> "西伊豆町"
-        "賀茂郡南伊豆町" -> "南伊豆町"
         "静岡県下田市" -> "下田市"
         "西伊豆町" -> "西伊豆町" (unchanged)
+        "旧西伊豆町" -> "西伊豆町"
+        "旧静岡市、旧美和村（旧静岡市）" -> "静岡市"
+        "島田市　　※旧島田市（金谷町含む）" -> "島田市"
 
     Args:
-        name: Municipality name (possibly with prefecture/county prefix)
+        name: Municipality name (possibly decorated / prefixed)
 
     Returns:
-        Normalized name without prefix
+        Normalized bare municipality name
     """
     if not name:
         return ''
 
-    # Pattern: Prefecture(県)/County(郡) + Municipality(市町村)
-    # Remove everything before and including 県 or 郡
-    patterns = [
-        r'^.*?郡',  # Remove county prefix (e.g., 賀茂郡)
-        r'^.*?県',  # Remove prefecture prefix (e.g., 静岡県)
-    ]
-
     result = name
-    for pattern in patterns:
+
+    # Forest-register decoration: keep the part before the first 、 , or ※,
+    # drop any (...) / （...）, then a leading 旧.
+    result = re.split(r'[、,※]', result, 1)[0]
+    result = re.sub(r'[（(].*?[）)]', '', result)
+
+    # Prefecture(県) / County(郡) prefix
+    for pattern in (r'^.*?郡', r'^.*?県'):
         result = re.sub(pattern, '', result)
+
+    result = result.replace(' ', '').replace('　', '')
+    result = re.sub(r'^旧', '', result)
 
     return result
 

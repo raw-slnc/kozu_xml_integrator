@@ -305,9 +305,42 @@ class ImportWorker(QObject):
         logger.debug(f"Oaza names in layer: {list(centers.keys())[:10]}...")
         return centers
 
+    def _tmp_extract_dir(self):
+        """ZIP展開用の一時ディレクトリの親を返す。システムの一時領域（/tmp 等）が
+        小さい環境で大容量XMLの展開が容量不足になるのを避けるため、DBファイルと
+        同じディレクトリ（＝利用者が空きのある場所に置いたDBの隣）に展開する。
+        取得できない場合は None（システム既定の一時領域）にフォールバック。"""
+        try:
+            base = Path(self.db_path).parent
+            if base.is_dir():
+                return str(base)
+        except (TypeError, OSError):
+            pass
+        return None
+
+    @staticmethod
+    def _sweep_stale_kozu_temp(base):
+        """クラッシュ／強制終了で残った古い展開フォルダ（kozu_extract_*）を掃除する。
+        2時間以上前のものだけ対象（実行中の別インポートは触らない）。"""
+        import shutil
+        import time
+        root = Path(base) if base else Path(tempfile.gettempdir())
+        cutoff = time.time() - 2 * 3600
+        try:
+            for p in root.glob('kozu_extract_*'):
+                try:
+                    if p.is_dir() and p.stat().st_mtime < cutoff:
+                        shutil.rmtree(p, ignore_errors=True)
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
     def _import_multiple_zips(self, importer, zip_files: List[Path], progress_callback):
         """Extract all ZIPs into isolated directories and import with source labels."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        _base = self._tmp_extract_dir()
+        self._sweep_stale_kozu_temp(_base)
+        with tempfile.TemporaryDirectory(prefix='kozu_extract_', dir=_base) as tmp_dir:
             tmp_path = Path(tmp_dir)
             xml_sources = []
             bad_zips = []

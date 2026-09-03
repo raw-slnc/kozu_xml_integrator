@@ -12,6 +12,7 @@ Database Schema:
 - t_transform_log: Transformation history
 """
 
+import os
 import sqlite3
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
@@ -189,6 +190,14 @@ class DatabaseManager:
         """
         self.db_path = Path(db_path)
         self._connection: Optional[sqlite3.Connection] = None
+        # SQLite/SpatiaLite の一時ファイル（etilqs_*: 空間インデックス作成・巨大な
+        # ソート等）を、システムの一時領域でなく DB と同じディレクトリに置く。
+        # 小さい /tmp・/var/tmp で容量不足になるのを防ぐ。
+        try:
+            if self.db_path.parent.is_dir():
+                os.environ['SQLITE_TMPDIR'] = str(self.db_path.parent)
+        except OSError:
+            pass
 
     @contextmanager
     def connection(self):
@@ -200,6 +209,14 @@ class DatabaseManager:
         """
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
+
+        # 一時ファイルの置き場を DB と同じディレクトリに（SQLITE_TMPDIR と併用）
+        try:
+            conn.execute(
+                "PRAGMA temp_store_directory = '%s'"
+                % str(self.db_path.parent).replace("'", "''"))
+        except sqlite3.Error:
+            pass
 
         # Enable SpatiaLite extension
         conn.enable_load_extension(True)

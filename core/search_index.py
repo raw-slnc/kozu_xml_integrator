@@ -171,13 +171,27 @@ class SearchIndex:
 
         return tuple(result)
 
+    def _resolve_oaza(self, name: str) -> Optional[str]:
+        """索引に存在する大字キーを返す。完全一致 → 先頭の政令市区名（葵区・天竜区
+        等、1〜4文字＋区）を落として再試行 → 見つからなければ None。
+        Kozu の大字は法務局公図由来で区名なし（例「井川」）だが、森林計画図や
+        森林簿側の大字が「葵区井川」のように区名付きのことがあるため。"""
+        if not name:
+            return None
+        if name in self._oaza_index:
+            return name
+        stripped = re.sub(r'^.{1,4}?区', '', name, count=1)
+        if stripped != name and stripped in self._oaza_index:
+            return stripped
+        return None
+
     def get_oaza_list(self) -> List[str]:
         """Get sorted list of all Oaza names."""
         return sorted(self._oaza_index.keys())
 
     def get_oaza_info(self, oaza_name: str) -> Optional[OazaIndexNode]:
         """Get index node for a specific Oaza."""
-        return self._oaza_index.get(oaza_name)
+        return self._oaza_index.get(self._resolve_oaza(oaza_name))
 
     def get_chiban_list(self, oaza_name: str,
                         koaza_code: Optional[str] = None) -> List[str]:
@@ -191,7 +205,7 @@ class SearchIndex:
         Returns:
             List of chibans
         """
-        node = self._oaza_index.get(oaza_name)
+        node = self._oaza_index.get(self._resolve_oaza(oaza_name))
         if not node:
             return []
 
@@ -202,7 +216,7 @@ class SearchIndex:
 
     def get_koaza_list(self, oaza_name: str) -> List[str]:
         """Get list of Koaza codes for an Oaza."""
-        node = self._oaza_index.get(oaza_name)
+        node = self._oaza_index.get(self._resolve_oaza(oaza_name))
         if not node:
             return []
         return sorted(node.koaza_map.keys())
@@ -238,7 +252,7 @@ class SearchIndex:
 
             if oaza:
                 sql += " AND oaza_name = ?"
-                params.append(oaza)
+                params.append(self._resolve_oaza(oaza) or oaza)
 
             sql += f" ORDER BY oaza_name, chiban LIMIT {limit}"
 
@@ -271,7 +285,8 @@ class SearchIndex:
             return []
 
         suggestions = []
-        search_oazas = [oaza_name] if oaza_name else self._oaza_index.keys()
+        search_oazas = ([self._resolve_oaza(oaza_name) or oaza_name]
+                        if oaza_name else self._oaza_index.keys())
 
         for oaza in search_oazas:
             node = self._oaza_index.get(oaza)
@@ -289,12 +304,12 @@ class SearchIndex:
 
     def oaza_exists(self, oaza_name: str) -> bool:
         """Check if an Oaza exists in the index."""
-        return oaza_name in self._oaza_index
+        return self._resolve_oaza(oaza_name) is not None
 
     def chiban_exists(self, chiban: str, oaza_name: Optional[str] = None) -> bool:
         """Check if a chiban exists in the index."""
         if oaza_name:
-            node = self._oaza_index.get(oaza_name)
+            node = self._oaza_index.get(self._resolve_oaza(oaza_name))
             return node is not None and chiban in node.chiban_list
 
         return chiban in self._chiban_to_oaza

@@ -576,32 +576,134 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
             "SQLite Database (*.sqlite);;All Files (*.*)"
         )
         if file_path:
-            path = Path(file_path)
-            if path.exists():
-                path.unlink()
-            self._open_database(path, create_new=True)
+            # 既存ファイルの削除も含めてバックグラウンドで実行（遅いディスクだと
+            # 大きな .sqlite の削除自体に時間がかかるため）
+            self._open_database(Path(file_path), create_new=True)
 
     def _open_database(self, path: Path, create_new: bool = False):
-        """Open or create a database."""
-        try:
-            self.db = DatabaseManager(path)
-            if create_new:
-                self.db.create_database()
-            self.db.migrate_database()
-            self.db_path = path
+        """Open or create a database.
 
+        重い処理（スキーマ作成の InitSpatialMetaData、マイグレーション、件数取得）は
+        別ディスク（NTFS/exFAT）だと数十秒かかる。スレッドは使わない（この環境では
+        mod_spatialite のワーカースレッド初回ロードが不安定）。待機カーソル＋
+        ステータス文言＋ボタン無効化で「作業中」を示す。作成・上書き・既存を
+        開く すべて同じ経路（上書き時の既存ファイル削除もこの中）。
+        """
+        from qgis.PyQt.QtWidgets import QApplication
+
+        silent = getattr(self, '_loading_settings', False)  # 起動時の前回DB復元は表示変更なし
+
+        def _stage(msg):
+            if not silent:
+                self.lblDbInfo.setText(msg)
+                QApplication.processEvents()
+
+        if not silent:
+            self.btnOpenDb.setEnabled(False)
+            self.btnNewDb.setEnabled(False)
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            if create_new and path.exists():
+                _stage("準備中… 既存のデータベースを削除しています")
+                path.unlink()
+
+            _stage("準備中… データベースを開いています")
+            db = DatabaseManager(path)
+
+            if create_new:
+                _stage("準備中… スキーマを作成しています（少し時間がかかります）")
+                db.create_database()
+
+            _stage("準備中… スキーマを更新しています")
+            db.migrate_database()
+
+            _stage("準備中… データベース情報を読み込んでいます")
+            file_count = fude_count = 0
+            oaza_names = []
+            try:
+                with db.connection() as conn:
+                    file_count = conn.execute(
+                        "SELECT COUNT(*) FROM t_xml_meta").fetchone()[0]
+                    fude_count = conn.execute(
+                        "SELECT COUNT(*) FROM t_fude_poly").fetchone()[0]
+                    oaza_names = [
+                        row[0] for row in conn.execute(
+                            "SELECT DISTINCT oaza_name FROM t_fude_poly "
+                            "WHERE oaza_name IS NOT NULL AND oaza_name != '' "
+                            "ORDER BY oaza_name"
+                        ).fetchall()
+                    ]
+            except Exception:  # nosec B110 - 情報取得の失敗はDBオープン自体の失敗にしない
+                pass
+
+            self.db = db
+            self.db_path = path
             self.lineEditGlobalDb.setText(str(path))
-            self._update_db_info()
+            self.lblDbInfo.setText(
+                f"ファイル数: {file_count} / 筆数: {fude_count}")
+            self.comboOaza.blockSignals(True)
+            self.comboOaza.clear()
+            self.comboOaza.addItem("（大字を選択）")
+            self.comboOaza.addItems(oaza_names)
+            self.comboOaza.blockSignals(False)
             self._update_ui_state()
-            self._populate_oaza_combo()
             self._save_settings()
             self.database_changed.emit(str(path))
-
             logger.info(f"Database opened: {path}")
 
         except Exception as e:
             logger.error(f"Failed to open database: {e}")
-            QMessageBox.critical(self, "エラー", f"データベースを開けませんでした:\n{e}")
+            self.lblDbInfo.setText("ファイル数: - / 筆数: -")
+            QMessageBox.critical(
+                self, "エラー",
+                "データベースを開けませんでした。\n\n"
+                f"{e}\n\n【対処】\n{self._db_error_advice(e)}")
+        finally:
+            if not silent:
+                QApplication.restoreOverrideCursor()
+                self.btnOpenDb.setEnabled(True)
+                self.btnNewDb.setEnabled(True)
+
+    @staticmethod
+    def _db_error_advice(text) -> str:
+        """DB／インポート関連のエラー文言から、ユーザーが取るべき対処を返す。"""
+        s = str(text).lower()
+        if ('errno 28' in s or 'no space left' in s
+                or '空き領域がありません' in s or 'disk full' in s):
+            return ("ディスクの空き容量が足りません。\n"
+                    "・空きのあるディスク（内蔵SSD／ext4 を推奨）にデータベースを"
+                    "作り直してください。展開用の一時ファイルも同じディスクを使います。\n"
+                    "・不要ファイルを削除して空きを確保してから再実行してください。")
+        if ('errno 13' in s or 'permission denied' in s
+                or 'read-only' in s or 'readonly' in s):
+            return ("書き込み権限がありません。\n"
+                    "・ホームフォルダなど書き込みできる場所を選び直してください。\n"
+                    "・外付けディスクが読み取り専用でマウントされていないか確認してください。")
+        if ('database is locked' in s or 'disk i/o error' in s
+                or ('lock' in s and 'protocol' in s)):
+            return ("データベースをロックできませんでした"
+                    "（NTFS／exFAT の外付けディスクで起きやすい）。\n"
+                    "・そのファイルを他のアプリ（別のQGISやDBブラウザ）で"
+                    "開いていないか確認してください。\n"
+                    "・可能なら ext4 の内蔵ディスクにデータベースを置いてください。")
+        if ('not a database' in s or 'malformed' in s
+                or 'file is encrypted' in s):
+            return ("選んだファイルは正しいデータベースでないか、壊れています。\n"
+                    "・別のファイルを選ぶか、新規作成し直してください。")
+        if ('mod_spatialite' in s or 'no such module' in s
+                or ('spatialite' in s and ('load' in s or 'extension' in s))):
+            return ("SpatiaLite 拡張を読み込めませんでした（QGIS環境側の問題）。\n"
+                    "・QGIS を再起動してください。改善しなければ QGIS の"
+                    "再インストールが必要な場合があります。")
+        if ('unable to open database file' in s or 'errno 2' in s
+                or 'no such file' in s or 'filenotfound' in s):
+            return ("データベースファイルにアクセスできませんでした。\n"
+                    "・外付けディスクが接続・マウントされているか確認してください。\n"
+                    "・フォルダのパスが正しいか確認してください。")
+        return ("・書き込み可能で空きのあるフォルダ（内蔵ディスクを推奨）を"
+                "選び直してください。\n"
+                "・外付けディスクの場合は接続とマウント状態を確認してください。\n"
+                "・QGIS を再起動しても直らない場合はログを確認してください。")
 
     def _update_db_info(self):
         """Update database info label."""
@@ -737,7 +839,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         self.lblProgressStatus.setText("エラー")
         self.btnStartImport.setText("インポート開始")
         self._update_ui_state()
-        QMessageBox.critical(self, "エラー", f"インポート中にエラーが発生しました:\n{error_msg}")
+        QMessageBox.critical(
+            self, "エラー",
+            "インポート中にエラーが発生しました。\n\n"
+            f"{error_msg}\n\n【対処】\n{self._db_error_advice(error_msg)}")
 
     def _rename_zips_with_municipality(self):
         """ZIPファイルに行政区画名を追記してリネームする。"""
@@ -903,6 +1008,9 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         if not query or not self.db:
             return
 
+        # 「888」で「3888」等を拾わないよう、部分文字列でなく地番の親番／枝番で照合する
+        q_parent, q_branch = self._parse_chiban(query)
+
         # Collect xml_meta_ids currently shown in the tree
         root = self.treeXmlFiles.invisibleRootItem()
         tree_items = {}  # xml_meta_id -> QTreeWidgetItem
@@ -922,23 +1030,26 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         found_xml_id = None
         try:
             with self.db.connection() as conn:
+                # 親番でざっくり絞ってから、地番の親番／枝番で厳密に照合する
+                # （chiban LIKE '%888%' は「3888」「8880」等も拾ってしまうため）
                 cursor = conn.execute(
-                    f"""SELECT xml_meta_id
+                    f"""SELECT xml_meta_id, chiban
                         FROM t_fude_poly
-                        WHERE chiban LIKE ? AND xml_meta_id IN ({placeholders})
-                        LIMIT 1""",  # nosec B608
-                    [f'%{query}%'] + list(tree_items.keys())
+                        WHERE chiban LIKE ? AND xml_meta_id IN ({placeholders})""",  # nosec B608
+                    [f'%{q_parent}%'] + list(tree_items.keys())
                 )
-                row = cursor.fetchone()
+                for xml_id, ch in cursor:
+                    p, b = self._parse_chiban(ch)
+                    if p == q_parent and (not q_branch or b == q_branch):
+                        found_xml_id = xml_id
+                        break
         except Exception as e:
             logger.error(f"XML chiban search error: {e}")
             return
 
-        if not row:
+        if found_xml_id is None:
             self.statusBar.showMessage(f'地番「{query}」が見つかりません', 3000)
             return
-
-        found_xml_id = row[0]
 
         # Select the matching tree item (triggers _on_xml_selected → loads/translates preview)
         if found_xml_id in tree_items:
@@ -949,10 +1060,10 @@ class KozuMainWindow(QMainWindow, FORM_CLASS):
         # not the raw DB coordinates that may differ when a tile background is active.
         parcel_centroid = None
         parcel_extent = None
-        query_lower = query.lower()
         if self.preview_layer:
             for feat in self.preview_layer.getFeatures():
-                if query_lower in (feat['chiban'] or '').lower():
+                p, b = self._parse_chiban(feat['chiban'] or '')
+                if p == q_parent and (not q_branch or b == q_branch):
                     geom = feat.geometry()
                     if geom and not geom.isNull():
                         parcel_centroid = geom.centroid().asPoint()

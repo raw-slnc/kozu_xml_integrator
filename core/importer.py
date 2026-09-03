@@ -102,6 +102,36 @@ class XmlImporter:
         if municipality_layer:
             self._municipality_joiner = SpatialJoiner(municipality_layer, municipality_name_field)
 
+    def _tmp_extract_dir(self):
+        """ZIP展開用の一時ディレクトリの親。/tmp 等が小さい環境で容量不足に
+        ならないよう、DBファイルと同じディレクトリに展開する。取得できなければ
+        None（システム既定の一時領域）。"""
+        try:
+            base = Path(self.db.db_path).parent
+            if base.is_dir():
+                return str(base)
+        except (AttributeError, TypeError, OSError):
+            pass
+        return None
+
+    @staticmethod
+    def _sweep_stale_kozu_temp(base):
+        """クラッシュ／強制終了で残った古い展開フォルダ（kozu_extract_*）を掃除する。
+        2時間以上前のものだけ対象（実行中の別インポートは触らない）。"""
+        import shutil
+        import time
+        root = Path(base) if base else Path(tempfile.gettempdir())
+        cutoff = time.time() - 2 * 3600
+        try:
+            for p in root.glob('kozu_extract_*'):
+                try:
+                    if p.is_dir() and p.stat().st_mtime < cutoff:
+                        shutil.rmtree(p, ignore_errors=True)
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
     def import_single_file(self, xml_path: Path,
                            progress_callback: Optional[Callable[[str], None]] = None,
                            source_name: Optional[str] = None
@@ -363,7 +393,9 @@ class XmlImporter:
                 oaza_assignments={}
             )
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        _base = self._tmp_extract_dir()
+        self._sweep_stale_kozu_temp(_base)
+        with tempfile.TemporaryDirectory(prefix='kozu_extract_', dir=_base) as tmp_dir:
             tmp_path = Path(tmp_dir)
             with zipfile.ZipFile(zip_path, 'r') as zf:
                 zf.extractall(tmp_path)
